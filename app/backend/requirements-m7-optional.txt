@@ -1,0 +1,2 @@
+# Optional local static HTML parser only; no fetcher/browser extras.
+Scrapling==0.4.15

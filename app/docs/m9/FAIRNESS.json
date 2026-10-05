@@ -1,0 +1,26 @@
+{
+  "scope": "Three tiny synthetic quiz pairs only; no representative resume ranking/calibration or human bias evaluation; no fairness certification",
+  "pairs": [
+    {
+      "pair": [
+        "Alex / he",
+        "Aina / she"
+      ],
+      "result": "equal_objective_score; subjective_human_review_pending"
+    },
+    {
+      "pair": [
+        "Applicant / age 24",
+        "Applicant / age 54"
+      ],
+      "result": "equal_objective_score; subjective_human_review_pending"
+    },
+    {
+      "pair": [
+        "EN applicant",
+        "BM pemohon"
+      ],
+      "result": "equal_objective_score; subjective_human_review_pending"
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+:root { --desktop: #008080; --window: #c0c0c0; --title: #000080; --text: #111; }
+.foundation { min-height: 100vh; background: var(--desktop); padding: 24px; color: var(--text); font-family: Arial, sans-serif; }
+.foundation-window { max-width: 960px; margin: auto; background: var(--window); border: 3px outset #eee; }
+.foundation-window header { background: var(--title); color: white; padding: 8px; display: flex; justify-content: space-between; gap: 16px; align-items: center; }
+.foundation-content { padding: 20px; }
+.foundation button, .foundation select { background: #ddd; color: #111; border: 2px outset #fff; padding: 6px 12px; margin: 4px; font-size: 1rem; }
+.foundation button:disabled { color: #555; cursor: not-allowed; }
+.foundation label { display: block; margin: 12px 0; }
+.foundation input { display: block; background: white; border: 2px inset #888; padding: 8px; max-width: 100%; }
+.foundation ul { padding: 0; list-style: none; }
+.foundation li { border: 2px inset #eee; padding: 12px; margin-bottom: 12px; overflow-wrap: anywhere; }
+.foundation a { color: #000080; text-decoration: underline; }
+.foundation :focus-visible { outline: 3px solid #111; outline-offset: 3px; }
+.foundation .notice { padding: 10px; border: 1px solid #666; }
+.foundation img { width: 180px; height: 180px; background: white; }
+.foundation textarea { display:block; width:100%; min-height:90px; background:white; border:2px inset #888; padding:8px; }
+.decision-dialog { background:#eee; border:3px outset white; padding:20px; margin:20px 0; }
+.application-card h3 { margin:0; }
+@media(max-width: 600px) { .foundation { padding: 8px; } .foundation-content { padding: 12px; } .foundation-window header { flex-wrap: wrap; } }
+
+/* Original Classic/Luna-inspired tokens. No Microsoft assets or fonts required. */
+.foundation {--desktop:#007777;--window:#d4d0c8;--title:#12354c;--text:#141414;--control:#eee;--link:#002c79;background-color:var(--desktop);background-image:radial-gradient(#ffffff18 1px,transparent 1px);background-size:16px 16px;padding-bottom:90px;}
+.foundation[data-theme="luna"] {--desktop:#234a70;--window:#edf2fa;--title:#174a8b;--control:#fff;--link:#00366f;}
+.foundation[data-theme="luna"] .foundation-window {border:2px solid #174a8b;border-radius:10px;box-shadow:0 4px 16px #0003;}
+.foundation[data-theme="luna"] .foundation-window header {border-radius:7px 7px 0 0;background:linear-gradient(#2965aa,#174a8b);}
+.foundation *, .foundation *::before,.foundation *::after {box-sizing:border-box;}
+.foundation button,.foundation select {background:var(--control);}
+.foundation a {color:var(--link);}
+.foundation input,.foundation textarea,.foundation select {font:inherit;max-width:100%;}
+.foundation input[type="checkbox"] {display:inline-block;}
+.foundation input:not([type="checkbox"]),.foundation textarea {width:100%;}
+.foundation .brand-strip {display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 auto 16px;max-width:960px;background:var(--window);padding:12px;border:2px outset #eee;}
+.foundation .brand-strip img {width:48px;height:48px;background:transparent;}
+.foundation .brand-strip h1 {font-size:1.5rem;margin:0;}
+.foundation .brand-strip p {margin:0;}
+.foundation .taskbar {position:fixed;bottom:0;left:0;right:0;z-index:20;background:var(--window);border-top:3px outset #eee;display:flex;gap:4px;flex-wrap:wrap;padding:4px;max-height:90px;overflow:auto;}
+.foundation .taskbar button {font-size:.875rem;margin:0;padding:6px;}
+.foundation .taskbar button[aria-pressed="true"] {border-style:inset;font-weight:bold;}
+.desktop-panel {margin:18px auto;max-width:960px;resize:horizontal;overflow:auto;min-width:min(280px,100%);width:100%;}
+.desktop-panel[hidden], .foundation [hidden] {display:none !important;}
+.panel-controls {background:var(--window);border:2px outset #eee;padding:4px;display:flex;flex-wrap:wrap;align-items:center;gap:4px;}
+.panel-controls button {font-size:.8rem;padding:4px;margin:0;}
+.move-handle {font-weight:bold;touch-action:none;cursor:move;margin-right:auto;}
+.panel-full {max-width:100%;width:100%;}
+.foundation .application-card {border:1px solid #555;padding:12px;margin:12px 0;overflow-wrap:anywhere;}
+.foundation :focus-visible {outline:3px solid #111;outline-offset:3px;box-shadow:0 0 0 5px white;}
+@media(max-width:600px){.desktop-panel{resize:none;transform:none!important}.move-handle{touch-action:auto;cursor:auto}.foundation .taskbar{position:sticky;bottom:0;max-height:none}.foundation-window{width:100%}.foundation{padding-bottom:12px}.foundation-window header{gap:4px}.foundation button{max-width:100%;overflow-wrap:anywhere;}}
+@media(prefers-reduced-motion:reduce){.foundation *{animation:none!important;transition:none!important;scroll-behavior:auto!important;}}
+
+.foundation .privacy-exports {display:flex;flex-wrap:wrap;gap:8px;margin:12px 0;}
+
+/* M11 table-backed charts: preserve reading order on narrow screens. */
+[aria-label="Analytics workspace"] table,[aria-label="Ruang analitik"] table {display:block;max-width:100%;overflow-x:auto;margin:1rem 0;border-collapse:collapse;}
+[aria-label="Analytics workspace"] th,[aria-label="Analytics workspace"] td,[aria-label="Ruang analitik"] th,[aria-label="Ruang analitik"] td {padding:.35rem;text-align:left;overflow-wrap:anywhere;}

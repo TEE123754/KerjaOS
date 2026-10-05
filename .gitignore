@@ -1,0 +1,30 @@
+# Local Git metadata preserved from the original source checkout.
+.source-history/
+app/.git/
+
+# Dependencies, generated artifacts and local test outputs.
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+dist/
+playwright-report/
+test-results/
+*.log
+.coverage
+
+# Local credentials, private evidence and encrypted archives.
+.env
+.env.*
+!.env.example
+*.enc
+*.pem
+*.key
+*.p12
+*.pfx
+app/backend/data/recruiting_db.json
+app/backend/uploads/
+app/backend/src/imports/
+app/supabase/.temp/

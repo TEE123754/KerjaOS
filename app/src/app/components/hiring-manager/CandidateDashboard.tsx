@@ -1,0 +1,3083 @@
+import { useEffect, useState, useMemo, useRef } from 'react';
+import { BiasControls, Job, ScrapedCandidate } from '../HiringManagerPortal';
+import {
+  Users,
+  Briefcase,
+  CheckCircle2,
+  TrendingUp,
+  TrendingDown,
+  Target,
+  Award,
+  AlertCircle,
+  ChevronDown,
+  ShieldCheck,
+  Loader2,
+  Mail,
+  RefreshCcw,
+  Trash2,
+  UserCheck,
+  UserCog,
+  KeyRound,
+  XCircle,
+  X,
+  Calendar,
+  RotateCcw,
+  FileSpreadsheet
+} from 'lucide-react';
+import * as Switch from '@radix-ui/react-switch';
+import * as Accordion from '@radix-ui/react-accordion';
+import { ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ZAxis } from 'recharts';
+import { motion } from 'motion/react';
+import { toast } from 'sonner';
+import { PdfResumeViewer } from '../PdfResumeViewer';
+import { API_BASE_URL, API_ORIGIN } from '../../api';
+import { KnowledgeTooltip } from '../KnowledgeTooltip';
+
+const getCandidatePhase = (status: string, answers?: string[]): string => {
+  if (status === 'hired') return 'Hired';
+  if (status === 'rejected') return 'Rejected';
+  if (status === 'interview_scheduled') return 'Interview In Progress';
+  if (status === 'completed') return 'Waiting for Interview';
+  if (status === 'screening' || (answers && answers.length > 0)) return 'Screening Completed';
+  return 'Waiting for Screening';
+};
+
+const hasSubmittedInterviewAnswers = (answers?: string[]): boolean =>
+  Array.isArray(answers) && answers.some(answer => answer.trim().length > 0);
+
+const isPendingInterview = (status: string, answers?: string[]): boolean =>
+  ['staged', 'invited', 'applied', 'screening'].includes(status) && !hasSubmittedInterviewAnswers(answers);
+
+const getQuestionFeedbackItems = (candidate: ScrapedCandidate): any[] => {
+  if (candidate.evaluation?.question_feedback?.length) {
+    return candidate.evaluation.question_feedback;
+  }
+  if (candidate.evaluation?.critiques?.length) {
+    return candidate.evaluation.critiques;
+  }
+  return (candidate.customQuestions || []).map((question: string, questionIndex: number) => ({
+    question,
+    candidate_answer: candidate.answers?.[questionIndex] || '',
+    critique: 'Feedback has not been generated for this question yet.',
+  }));
+};
+
+const hasInterviewFeedbackDetails = (candidate: ScrapedCandidate): boolean =>
+  hasSubmittedInterviewAnswers(candidate.answers)
+  || Boolean(candidate.evaluation?.question_feedback?.length)
+  || Boolean(candidate.evaluation?.critiques?.length);
+
+const scoreBreakdownHelp: Record<string, string> = {
+  Role: 'Role alignment measures how directly the answer addresses the selected job requirements and responsibilities.',
+  Depth: 'Depth measures technical correctness, specificity, and whether the candidate explains the reasoning behind their answer.',
+  Evidence: 'Evidence measures whether the candidate supports claims with concrete examples, metrics, tools, projects, or outcomes.',
+  Impact: 'Impact measures the business or product value shown in the answer, not just activity or effort.',
+  Clarity: 'Clarity measures how clearly and professionally the candidate communicates the answer.',
+};
+
+const positionFitHelp = 'How closely this candidate matches the selected job. It looks at their skills, experience, resume evidence, and interview answers.';
+const velocityHelp = 'How quickly this candidate appears able to learn and grow. Higher velocity means stronger signs of adapting, improving, and picking up new skills.';
+const trajectoryHelp = 'A growth-potential view of the candidate. It is similar to velocity and helps HR spot candidates who may improve quickly after joining.';
+
+interface Props {
+  jobs: Job[];
+  candidates: ScrapedCandidate[];
+  neutralize: boolean;
+  onToggleNeutralize: (active: boolean) => Promise<void> | void;
+  biasControls: BiasControls;
+  onUpdateBiasControls: (updates: Partial<BiasControls>) => Promise<BiasControls>;
+  isLoading?: boolean;
+  onRefresh: () => Promise<void> | void;
+  onStatusChange: (email: string, status: ScrapedCandidate['status'], positionId?: number) => Promise<void>;
+  onInvite: (email: string, outreachEmail?: string, hrFeedback?: string) => Promise<any>;
+  onDelete: (email: string) => Promise<void>;
+  onReject: (email: string, positionId?: number, hrFeedback?: string, rejectionMessage?: string) => Promise<void>;
+  onScheduleInterview: (email: string, positionId: number | undefined, date: string, time: string, location: string, notes?: string) => Promise<any>;
+  onUpdateOutreachNotes: (email: string, positionId?: number, outreachEmail?: string, hrFeedback?: string) => Promise<any>;
+  onRevertStatus?: (email: string, positionId?: number) => Promise<void>;
+  view?: 'overview' | 'candidates';
+}
+
+// Predefined outreach templates for Feature 6
+const OUTREACH_TEMPLATES = [
+  {
+    label: 'Tech / Software',
+    emoji: '💻',
+    generate: (name: string, jobTitle: string) =>
+      `Hi ${name},\n\nI came across your profile and was genuinely impressed by your background. We're building something exciting here and your experience feels like a strong match for the ${jobTitle} role we currently have open.\n\nOur team is collaborative, technically driven, and moves fast. We're strong believers in remote-first culture, continuous learning, and giving engineers real ownership of the product.\n\nWould love to set aside 20 minutes to chat about what we're working on and whether it might be the right fit for you. Keen to hear more?\n\nBest regards,\nThe Talent Team`
+  },
+  {
+    label: 'Operations / General',
+    emoji: '🏢',
+    generate: (name: string, jobTitle: string) =>
+      `Hi ${name},\n\nThank you for your interest in the ${jobTitle} position at our company. We reviewed your profile carefully and believe your practical experience makes you a strong candidate for this role.\n\nWe are a fast-growing team focused on building reliable, people-first operations. The ${jobTitle} role plays a key part in supporting our day-to-day success and long-term growth plans.\n\nWe would love to learn more about your background and share more about the opportunity. Please let us know a convenient time to connect.\n\nWarm regards,\nThe Recruiting Team`
+  },
+  {
+    label: 'Senior / Leadership',
+    emoji: '🌟',
+    generate: (name: string, jobTitle: string) =>
+      `Hi ${name},\n\nYour career trajectory stood out to us — particularly the way you've consistently moved into roles with broader impact and responsibility. We're currently searching for the right person to take on the ${jobTitle} position, and your profile came up as a compelling match.\n\nThis is a leadership role where you'd be setting direction, mentoring a growing team, and working closely with senior stakeholders. We're looking for someone who leads with clarity, earns trust quickly, and sees the bigger picture.\n\nI'd welcome the chance to speak with you directly. Would you be open to a brief exploratory call?\n\nWith respect,\nThe Executive Search Team`
+  }
+];
+
+const getVisiblePages = (currentPage: number, totalPages: number) => {
+  const pages = new Set([1, totalPages, currentPage - 1, currentPage, currentPage + 1]);
+  return Array.from(pages)
+    .filter(page => page >= 1 && page <= totalPages)
+    .sort((a, b) => a - b);
+};
+
+const alignScoreMentions = (text: string, score: any) => {
+  if (score === undefined || score === null || text === undefined || text === null) return text;
+  return String(text)
+    .replace(/(answer\s+scored\s+)(\d+(?:\.\d+)?)(\/100)/i, `$1${score}$3`)
+    .replace(/(score\s+is\s+)(\d+(?:\.\d+)?)(\/100)/i, `$1${score}$3`)
+    .replace(/(scored\s+)(\d+(?:\.\d+)?)(\s*out\s+of\s+100)/i, `$1${score}$3`);
+};
+
+export const cleanQuestionText = (text: string, index?: number): string => {
+  if (!text) return '';
+  const trimmed = text.trim();
+  
+  if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        if (index !== undefined && index >= 0 && index < parsed.length) {
+          return String(parsed[index]).trim();
+        }
+        return parsed.join(' ').trim();
+      }
+      if (typeof parsed === 'object') {
+        const qList = parsed.questions || parsed.custom_questions || parsed.screening_questions || parsed.items;
+        if (Array.isArray(qList)) {
+          if (index !== undefined && index >= 0 && index < qList.length) {
+            return String(qList[index]).trim();
+          }
+          return qList.join(' ').trim();
+        }
+        const stringValues = Object.values(parsed).filter(v => typeof v === 'string');
+        if (index !== undefined && index >= 0 && index < stringValues.length) {
+          return String(stringValues[index]).trim();
+        }
+        return stringValues.join(' ').trim();
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+  
+  if (trimmed.includes('"questions"') || trimmed.includes('"custom_questions"')) {
+    const match = trimmed.match(/"(?:questions|custom_questions)"\s*:\s*\[([\s\S]*?)\]/);
+    if (match && match[1]) {
+      const items = match[1].split(/",\s*"/).map(s => s.replace(/"/g, '').trim());
+      if (index !== undefined && index >= 0 && index < items.length) {
+        return items[index];
+      }
+      return items.join(' ');
+    }
+  }
+  
+  let cleaned = trimmed
+    .replace(/^"/, '')
+    .replace(/"$/, '');
+    
+  return cleaned.trim();
+};
+
+export function CandidateDashboard({
+  jobs,
+  candidates,
+  neutralize,
+  onToggleNeutralize,
+  biasControls,
+  onUpdateBiasControls,
+  isLoading,
+  onRefresh,
+  onStatusChange: onStatusChangeProp,
+  onInvite: onInviteProp,
+  onDelete,
+  onReject: onRejectProp,
+  onScheduleInterview: onScheduleInterviewProp,
+  onUpdateOutreachNotes,
+  onRevertStatus,
+  view = 'overview'
+}: Props) {
+  const anonymizedMode = biasControls.anonymized_blind_hiring;
+  const [busyEmail, setBusyEmail] = useState('');
+  const actionLocksRef = useRef<Set<string>>(new Set());
+  const [actionError, setActionError] = useState('');
+  const [selectedPositionId, setSelectedPositionId] = useState<number | 'all'>('all');
+  const [selectedTrajectoryCandidate, setSelectedTrajectoryCandidate] = useState<ScrapedCandidate | null>(null);
+  const [brokenImages, setBrokenImages] = useState<Record<string, boolean>>({});
+  const [fairnessAudit, setFairnessAudit] = useState<any>(null);
+  const [fairnessLoading, setFairnessLoading] = useState(false);
+  const [biasControlsSaving, setBiasControlsSaving] = useState(false);
+  const [localPrestigeWeight, setLocalPrestigeWeight] = useState(biasControls.prestige_weight);
+  const [isSeedingBiasMockData, setIsSeedingBiasMockData] = useState(false);
+
+  const [lastActionCandidate, setLastActionCandidate] = useState<{ email: string; name: string; oldStatus: string; newStatus: string; jobId?: number } | null>(null);
+
+  const onStatusChange = async (email: string, newStatus: ScrapedCandidate['status'], jobId?: number) => {
+    const candidate = candidates.find(c => getActionEmail(c).toLowerCase() === email.toLowerCase());
+    if (candidate) {
+      setLastActionCandidate({
+        email,
+        name: candidate.name,
+        oldStatus: candidate.status,
+        newStatus,
+        jobId
+      });
+    }
+    await onStatusChangeProp(email, newStatus, jobId);
+  };
+
+  const onInvite = async (email: string, outreachEmail?: string, hrFeedback?: string) => {
+    const candidate = candidates.find(c => getActionEmail(c).toLowerCase() === email.toLowerCase());
+    if (candidate) {
+      setLastActionCandidate({
+        email,
+        name: candidate.name,
+        oldStatus: candidate.status,
+        newStatus: 'invited',
+        jobId: candidate.jobId
+      });
+    }
+    return onInviteProp(email, outreachEmail, hrFeedback);
+  };
+
+  const onReject = async (email: string, positionId?: number, hrFeedback?: string, rejectionMessage?: string) => {
+    const candidate = candidates.find(c => getActionEmail(c).toLowerCase() === email.toLowerCase());
+    if (candidate) {
+      setLastActionCandidate({
+        email,
+        name: candidate.name,
+        oldStatus: candidate.status,
+        newStatus: 'rejected',
+        jobId: positionId
+      });
+    }
+    await onRejectProp(email, positionId, hrFeedback, rejectionMessage);
+  };
+
+  const onScheduleInterview = async (email: string, positionId: number | undefined, date: string, time: string, location: string, notes?: string) => {
+    const candidate = candidates.find(c => getActionEmail(c).toLowerCase() === email.toLowerCase());
+    if (candidate) {
+      setLastActionCandidate({
+        email,
+        name: candidate.name,
+        oldStatus: candidate.status,
+        newStatus: 'interview_scheduled',
+        jobId: positionId
+      });
+    }
+    return onScheduleInterviewProp(email, positionId, date, time, location, notes);
+  };
+
+  const openPdfInBrowser = async (url: string) => {
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const win = window.open(blobUrl, '_blank');
+      if (!win) window.open(url, '_blank');
+    } catch {
+      window.open(url, '_blank');
+    }
+  };
+
+  const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [sortBy, setSortBy] = useState<'match' | 'match-asc' | 'velocity' | 'name'>('match');
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [accountSearch, setAccountSearch] = useState('');
+  const [accountFilter, setAccountFilter] = useState<'all' | 'verified' | 'unverified' | 'password_set' | 'password_missing'>('all');
+  const [passwordResetMessage, setPasswordResetMessage] = useState('');
+  const pageSize = 10;
+
+  const [editedOutreach, setEditedOutreach] = useState<Record<string, string>>({});
+  const [editedFeedback, setEditedFeedback] = useState<Record<string, string>>({});
+  const [isSavingField, setIsSavingField] = useState<Record<string, boolean>>({});
+  const [inviteSuccessMessage, setInviteSuccessMessage] = useState<string>('');
+
+  const [rejectTarget, setRejectTarget] = useState<ScrapedCandidate | null>(null);
+  const [rejectFeedback, setRejectFeedback] = useState<string>('');
+  const [rejectMessage, setRejectMessage] = useState<string>('');
+
+  const [openMarkDropdown, setOpenMarkDropdown] = useState<string>('');
+
+  const [scheduleTarget, setScheduleTarget] = useState<ScrapedCandidate | null>(null);
+  const [scheduleDate, setScheduleDate] = useState<string>('');
+  const [scheduleTime, setScheduleTime] = useState<string>('');
+  const [scheduleLocation, setScheduleLocation] = useState<string>('To be confirmed');
+  const [scheduleNotes, setScheduleNotes] = useState<string>('');
+  const [isSchedulingInterview, setIsSchedulingInterview] = useState(false);
+
+  const activePositions = jobs.filter(job => job.isOpenForApplications).length;
+  const selectedJob = selectedPositionId === 'all' ? null : jobs.find(job => job.id === selectedPositionId);
+  const scopedCandidates = useMemo(() => {
+    return selectedPositionId === 'all'
+      ? candidates
+      : candidates.filter(candidate => candidate.jobId === selectedPositionId);
+  }, [candidates, selectedPositionId]);
+  const totalCandidates = scopedCandidates.length;
+  const screeningCompleted = scopedCandidates.filter(c => c.status === 'completed').length;
+  const hiredCandidates = scopedCandidates.filter(c => c.status === 'hired').length;
+  const activePipelineCount = scopedCandidates.filter(c => c.status !== 'hired' && c.status !== 'rejected').length;
+  const averageMatch = totalCandidates
+    ? Math.round(scopedCandidates.reduce((sum, candidate) => sum + candidate.matchScore, 0) / totalCandidates)
+    : 0;
+
+  const positionStats = useMemo(() => {
+    return jobs.map(job => {
+      const pool = candidates.filter(candidate => candidate.jobId === job.id);
+      const completed = pool.filter(candidate => candidate.status === 'completed').length;
+      const hired = pool.filter(candidate => candidate.status === 'hired').length;
+      const average = pool.length
+        ? Math.round(pool.reduce((sum, candidate) => sum + candidate.matchScore, 0) / pool.length)
+        : 0;
+      return { job, pool, completed, hired, average };
+    });
+  }, [jobs, candidates]);
+
+  const scatterData = useMemo(() => {
+    return scopedCandidates.map(c => ({
+      name: anonymizedMode ? `Candidate #${c.id.toString().padStart(4, '0')}` : c.name,
+      matchScore: c.matchScore,
+      trajectoryScore: c.trajectoryScore,
+      candidate: c
+    }));
+  }, [scopedCandidates, anonymizedMode]);
+
+  const neutralizeText = (text: string): string => {
+    if (!neutralize) return text;
+    const replacements = [
+      { pattern: /Google|Facebook|Meta|Apple|Amazon|Microsoft|Netflix/gi, replacement: '[Tier-1 Tech Corporation]' },
+      { pattern: /McKinsey|BCG|Bain/gi, replacement: '[Tier-1 Consulting Firm]' },
+      { pattern: /Goldman Sachs|Morgan Stanley|JP Morgan/gi, replacement: '[Tier-1 Investment Bank]' },
+      { pattern: /Harvard|Yale|Stanford|MIT|Princeton/gi, replacement: '[Tier-1 Research University]' },
+      { pattern: /Berkeley|UCLA|Michigan|Cornell/gi, replacement: '[Top 20 State University]' },
+    ];
+    let result = text;
+    replacements.forEach(({ pattern, replacement }) => {
+      result = result.replace(pattern, replacement);
+    });
+    return result;
+  };
+
+  const getDisplayName = (candidate: ScrapedCandidate): string =>
+    anonymizedMode ? `Candidate #${candidate.id.toString().padStart(4, '0')}` : candidate.name;
+
+  const getDisplayEmail = (candidate: ScrapedCandidate): string =>
+    anonymizedMode ? `candidate${candidate.id}@anonymized.local` : candidate.email;
+
+  const getActionEmail = (candidate: ScrapedCandidate): string =>
+    candidate.managementEmail || candidate.email;
+
+  const candidateAccounts = useMemo(() => {
+    const accounts = new Map<string, ScrapedCandidate>();
+    candidates.forEach(candidate => {
+      const emailKey = getActionEmail(candidate).toLowerCase();
+      const existing = accounts.get(emailKey);
+      if (!existing) {
+        accounts.set(emailKey, candidate);
+        return;
+      }
+      if ((candidate.applicationCount || 0) > (existing.applicationCount || 0)) {
+        accounts.set(emailKey, candidate);
+      }
+    });
+    return Array.from(accounts.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [candidates]);
+
+  const filteredAccounts = useMemo(() => {
+    const query = accountSearch.trim().toLowerCase();
+    return candidateAccounts.filter(candidate => {
+      const matchesQuery = !query
+        || candidate.name.toLowerCase().includes(query)
+        || getActionEmail(candidate).toLowerCase().includes(query);
+      const matchesFilter =
+        accountFilter === 'all'
+        || (accountFilter === 'verified' && candidate.emailVerified)
+        || (accountFilter === 'unverified' && !candidate.emailVerified)
+        || (accountFilter === 'password_set' && candidate.hasPassword)
+        || (accountFilter === 'password_missing' && !candidate.hasPassword);
+      return matchesQuery && matchesFilter;
+    });
+  }, [accountFilter, accountSearch, candidateAccounts]);
+
+  // Filter candidates based on selected status pill
+  const filteredCandidates = useMemo(() => {
+    return filterStatus === 'all'
+      ? scopedCandidates
+      : scopedCandidates.filter(c => c.status === filterStatus);
+  }, [scopedCandidates, filterStatus]);
+
+  // Sort candidates based on active sort setting
+  const sortedCandidates = useMemo(() => {
+    return [...filteredCandidates].sort((a, b) => {
+      if (sortBy === 'match') {
+        return b.matchScore - a.matchScore;
+      }
+      if (sortBy === 'match-asc') {
+        return a.matchScore - b.matchScore;
+      }
+      if (sortBy === 'velocity') {
+        return b.trajectoryScore - a.trajectoryScore;
+      }
+      if (sortBy === 'name') {
+        return a.name.localeCompare(b.name);
+      }
+      return 0;
+    });
+  }, [filteredCandidates, sortBy]);
+
+  const totalFiltered = sortedCandidates.length;
+  const totalPages = Math.ceil(totalFiltered / pageSize);
+  const visiblePages = getVisiblePages(currentPage, totalPages);
+
+  // Paginate sorted & filtered candidates
+  const paginatedCandidates = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return sortedCandidates.slice(start, start + pageSize);
+  }, [sortedCandidates, currentPage, pageSize]);
+
+  const runAction = async (email: string, action: () => Promise<void> | void) => {
+    if (actionLocksRef.current.has(email)) return;
+    actionLocksRef.current.add(email);
+    setBusyEmail(email);
+    setActionError('');
+    try {
+      return await action();
+    } catch (error: any) {
+      setActionError(error.message || 'Candidate action failed.');
+      toast.error(error.message || 'Candidate action failed.');
+    } finally {
+      actionLocksRef.current.delete(email);
+      setBusyEmail(current => current === email ? '' : current);
+    }
+  };
+
+  const CustomTooltip = ({ active, payload }: any) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload;
+      return (
+        <div className="bg-white border border-[#e4e1da] p-4 rounded-xl shadow-lg font-sans">
+          <p className="text-sm text-[#1c1c1a] mb-2 font-semibold">{data.name}</p>
+          <div className="space-y-1">
+            <div className="flex justify-between gap-4 text-xs font-medium">
+              <span className="text-[#6b7063] inline-flex items-center gap-1.5">
+                <span>Position Fit</span>
+                <KnowledgeTooltip label="Explain position fit">{positionFitHelp}</KnowledgeTooltip>
+              </span>
+              <span className="text-[#2d6a55]">{data.matchScore}%</span>
+            </div>
+            <div className="flex justify-between gap-4 text-xs font-medium">
+              <span className="text-[#6b7063] inline-flex items-center gap-1.5">
+                <span>Trajectory</span>
+                <KnowledgeTooltip label="Explain trajectory">{trajectoryHelp}</KnowledgeTooltip>
+              </span>
+              <span className="text-[#c9a84c]">{data.trajectoryScore}%</span>
+            </div>
+            <p className="text-[10px] text-[#a8a49d] pt-1">Click to open candidate profile</p>
+          </div>
+        </div>
+      );
+    }
+    return null;
+  };
+
+  useEffect(() => {
+    setLocalPrestigeWeight(biasControls.prestige_weight);
+  }, [biasControls.prestige_weight]);
+
+  useEffect(() => {
+    if (view !== 'overview') return;
+    let cancelled = false;
+    const loadFairnessAudit = async () => {
+      setFairnessLoading(true);
+      try {
+        const query = selectedPositionId === 'all' ? '' : `?position_id=${selectedPositionId}`;
+        const res = await fetch(`${API_BASE_URL}/candidates/fairness-audit${query}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled) setFairnessAudit(data);
+      } catch (error) {
+        if (!cancelled) setFairnessAudit(null);
+      } finally {
+        if (!cancelled) setFairnessLoading(false);
+      }
+    };
+    loadFairnessAudit();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedPositionId, candidates.length, biasControls.scoring_mode, biasControls.prestige_weight, view]);
+
+  const updateBiasControl = async (updates: Partial<BiasControls>, options: { notify?: boolean } = {}) => {
+    if (biasControlsSaving) return;
+    setBiasControlsSaving(true);
+    try {
+      await onUpdateBiasControls(updates);
+      if (options.notify !== false) toast.success('Bias controls updated.');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to update bias controls.');
+    } finally {
+      setBiasControlsSaving(false);
+    }
+  };
+
+  const handleNeutralizeControl = async (checked: boolean) => {
+    if (biasControlsSaving) return;
+    setBiasControlsSaving(true);
+    try {
+      await onToggleNeutralize(checked);
+      toast.success('Bias controls updated.');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to update bias controls.');
+    } finally {
+      setBiasControlsSaving(false);
+    }
+  };
+
+  const commitPrestigeWeight = () => {
+    if (biasControlsSaving) return;
+    if (localPrestigeWeight !== biasControls.prestige_weight) {
+      updateBiasControl({ prestige_weight: localPrestigeWeight }, { notify: false });
+    }
+  };
+
+  const seedBiasComparisonMockData = async () => {
+    const positionId = selectedPositionId === 'all'
+      ? jobs.find(job => job.isOpenForApplications)?.id || jobs[0]?.id
+      : selectedPositionId;
+    if (!positionId) {
+      toast.error('Create a position before adding mock comparison candidates.');
+      return;
+    }
+    setIsSeedingBiasMockData(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/candidates/mock-bias-comparison`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ position_id: positionId })
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.detail || 'Failed to add mock comparison candidates.');
+      await onRefresh();
+      toast.success(`Added ${data?.created_count || 0} university comparison candidates.`);
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to add mock comparison candidates.');
+    } finally {
+      setIsSeedingBiasMockData(false);
+    }
+  };
+
+  const renderBiasMitigationControls = () => (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, delay: 0.45 }}
+      className="bg-white border border-[#e4e1da] rounded-2xl p-6 shadow-sm"
+    >
+      <div className="flex items-center gap-3 mb-6">
+        <div className="w-11 h-11 bg-[#e8f2ee] rounded-2xl flex items-center justify-center">
+          <ShieldCheck className="w-5 h-5 text-[#2d6a55]" />
+        </div>
+        <div>
+          <div className="flex items-center gap-2">
+            <h3 className="text-[#1c1c1a] font-semibold text-base">Fair Hiring Controls</h3>
+            <KnowledgeTooltip label="What fairness controls do">
+              These controls decide whether candidate identity and pedigree signals are hidden, and whether scores use blind merit only or include reputation weight.
+            </KnowledgeTooltip>
+          </div>
+          <p className="text-sm text-[#6b7063]">Choose what hiring managers see and how much reputation affects scores.</p>
+        </div>
+        {biasControlsSaving && (
+          <div className="ml-auto inline-flex items-center gap-2 rounded-full border border-[#c8e6d8] bg-[#e8f2ee] px-3 py-1.5 text-xs font-semibold text-[#2d6a55]">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Updating...
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-2.5">
+        <div className="flex items-center justify-between gap-5 p-5 bg-[#f7f6f3] rounded-2xl border border-[#e4e1da] hover:border-[#2d6a55]/30 transition-colors">
+          <div className="flex-1 min-w-0">
+            <div className="flex flex-wrap items-center gap-2 mb-1">
+              <label htmlFor="prestige-toggle" className="text-sm sm:text-base text-[#1c1c1a] cursor-pointer font-medium">
+                Hide school and company names
+              </label>
+              <KnowledgeTooltip label="Why hide school and company names">
+                This neutralizes pedigree signals so reviewers focus first on skills, experience, and role evidence rather than institutional reputation.
+              </KnowledgeTooltip>
+              <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold transition-colors ${
+                neutralize ? 'bg-[#e8f2ee] text-[#2d6a55]' : 'bg-[#f0ede8] text-[#a8a49d]'
+              }`}>
+                {neutralize ? 'Active' : 'Off'}
+              </span>
+            </div>
+            <p className="text-sm text-[#6b7063] leading-relaxed">
+              Show schools and employers as simple background types, so names like universities or big companies do not stand out first.
+            </p>
+          </div>
+          <Switch.Root
+            id="prestige-toggle"
+            checked={neutralize}
+            onCheckedChange={handleNeutralizeControl}
+            disabled={biasControlsSaving}
+            className="w-14 h-7 bg-[#e4e1da] rounded-full relative data-[state=checked]:bg-[#2d6a55] transition-colors outline-none cursor-pointer flex-shrink-0 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Switch.Thumb className="block w-6 h-6 bg-white rounded-full shadow transition-transform duration-200 translate-x-0.5 will-change-transform data-[state=checked]:translate-x-[30px]" />
+          </Switch.Root>
+        </div>
+
+        <div className="flex items-center justify-between gap-5 p-5 bg-[#f7f6f3] rounded-2xl border border-[#e4e1da] hover:border-[#2d6a55]/30 transition-colors">
+          <div className="flex-1 min-w-0">
+            <div className="flex flex-wrap items-center gap-2 mb-1">
+              <label htmlFor="anonymous-toggle" className="text-sm sm:text-base text-[#1c1c1a] cursor-pointer font-medium">
+                Hide candidate identity
+              </label>
+              <KnowledgeTooltip label="Why hide candidate identity">
+                Blind review reduces early-stage bias by replacing personally identifying labels with candidate IDs while preserving application evidence.
+              </KnowledgeTooltip>
+              <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold transition-colors ${
+                anonymizedMode ? 'bg-[#e8f2ee] text-[#2d6a55]' : 'bg-[#f0ede8] text-[#a8a49d]'
+              }`}>
+                {anonymizedMode ? 'Active' : 'Off'}
+              </span>
+            </div>
+            <p className="text-sm text-[#6b7063] leading-relaxed">
+              Replace names and emails with candidate ID labels while you review early-stage applications.
+            </p>
+          </div>
+          <Switch.Root
+            id="anonymous-toggle"
+            checked={anonymizedMode}
+            onCheckedChange={(checked) => updateBiasControl({ anonymized_blind_hiring: checked })}
+            disabled={biasControlsSaving}
+            className="w-14 h-7 bg-[#e4e1da] rounded-full relative data-[state=checked]:bg-[#2d6a55] transition-colors outline-none cursor-pointer flex-shrink-0 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Switch.Thumb className="block w-6 h-6 bg-white rounded-full shadow transition-transform duration-200 translate-x-0.5 will-change-transform data-[state=checked]:translate-x-[30px]" />
+          </Switch.Root>
+        </div>
+
+        <div className="p-5 bg-[#f7f6f3] rounded-2xl border border-[#e4e1da] hover:border-[#2d6a55]/30 transition-colors">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2 mb-1">
+                <p className="text-sm sm:text-base text-[#1c1c1a] font-medium">How should scores be calculated?</p>
+                <KnowledgeTooltip label="How scoring mode works">
+                  Blind merit scores ignore pedigree signals. Prestige-aware mode adds a controlled reputation weight so HR can compare how ranking changes.
+                </KnowledgeTooltip>
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#e8f2ee] text-[#2d6a55]">
+                  {biasControls.scoring_mode === 'prestige_aware' ? 'Reputation included' : 'Skills only'}
+                </span>
+              </div>
+              <p className="text-sm text-[#6b7063] leading-relaxed">
+                Decide whether the score should focus only on role fit, or also count school and company reputation.
+              </p>
+            </div>
+            <div className="flex bg-white border border-[#e4e1da] rounded-xl p-1 flex-shrink-0">
+              {[
+                { value: 'blind_merit', label: 'Focus on skills only' },
+                { value: 'prestige_aware', label: 'Include school/company reputation' }
+              ].map(option => (
+                <button
+                  key={option.value}
+                  disabled={biasControlsSaving || biasControls.scoring_mode === option.value}
+                  onClick={() => updateBiasControl({ scoring_mode: option.value as BiasControls['scoring_mode'] })}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                    biasControls.scoring_mode === option.value
+                      ? 'bg-[#2d6a55] text-white'
+                      : 'text-[#6b7063] hover:text-[#1c1c1a]'
+                  } disabled:cursor-not-allowed disabled:opacity-70`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {biasControls.scoring_mode === 'prestige_aware' && (
+            <div className="mt-4 pt-4 border-t border-[#e4e1da]">
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <label htmlFor="prestige-weight" className="text-xs tracking-wider uppercase text-[#a8a49d] font-semibold">
+                  How much should reputation matter?
+                </label>
+                <span className="text-sm text-[#2d6a55] font-semibold">{localPrestigeWeight}%</span>
+              </div>
+              <p className="text-xs text-[#6b7063] leading-relaxed mb-3">
+                0% means it does not affect scores. 50% means reputation weighs as much as the merit side of the formula.
+              </p>
+              <input
+                id="prestige-weight"
+                type="range"
+                min="0"
+                max="50"
+                step="1"
+                value={localPrestigeWeight}
+                onChange={(event) => setLocalPrestigeWeight(Number(event.target.value))}
+                onPointerUp={commitPrestigeWeight}
+                onMouseUp={commitPrestigeWeight}
+                onTouchEnd={commitPrestigeWeight}
+                onBlur={commitPrestigeWeight}
+                onKeyUp={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') commitPrestigeWeight();
+                }}
+                disabled={biasControlsSaving}
+                className="w-full accent-[#2d6a55] disabled:cursor-not-allowed disabled:opacity-60"
+              />
+              <div className="flex justify-between text-[11px] text-[#a8a49d] mt-1">
+                <span>0%</span>
+                <span>15%</span>
+                <span>30%</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 bg-white rounded-2xl border border-[#e4e1da]">
+          <div>
+            <p className="text-sm text-[#1c1c1a] font-semibold">Try sample candidates</p>
+            <p className="text-xs text-[#6b7063] mt-0.5">
+              Add example candidates from different school backgrounds, then compare how score settings change their ranking.
+            </p>
+          </div>
+          <button
+            onClick={seedBiasComparisonMockData}
+            disabled={isSeedingBiasMockData}
+            className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-[#2d6a55] text-white text-xs font-semibold hover:bg-[#245747] disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+          >
+            {isSeedingBiasMockData && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            Add Sample Candidates
+          </button>
+        </div>
+
+        <div className="grid md:grid-cols-3 gap-3 pt-2">
+          <div className="bg-[#f0f9f4] border border-[#c8e6d8] rounded-xl p-4">
+            <div className="mb-1 flex items-center gap-2">
+              <p className="text-xs tracking-wider uppercase text-[#2d6a55] font-semibold">Fairness Check</p>
+              <KnowledgeTooltip label="Fairness check score">
+                Higher values indicate less observed imbalance between reputation groups in the current candidate pool.
+              </KnowledgeTooltip>
+            </div>
+            <p className="text-2xl text-[#1c1c1a] font-semibold">{fairnessLoading ? '--' : fairnessAudit?.fairness_score ?? '--'}</p>
+            <p className="text-xs text-[#6b7063] mt-1 leading-relaxed">Higher means the current pipeline looks more balanced.</p>
+          </div>
+          <div className="bg-[#f7f6f3] border border-[#e4e1da] rounded-xl p-4">
+            <div className="mb-1 flex items-center gap-2">
+              <p className="text-xs tracking-wider uppercase text-[#a8a49d] font-semibold">Risk Level</p>
+              <KnowledgeTooltip label="Fairness risk level">
+                This summarizes whether the selection pattern needs closer HR review before using rankings for decisions.
+              </KnowledgeTooltip>
+            </div>
+            <p className="text-lg text-[#1c1c1a] font-semibold capitalize">{fairnessAudit?.risk_level?.replace('_', ' ') || 'Checking'}</p>
+            <p className="text-xs text-[#6b7063] mt-1 leading-relaxed">Shows whether results may need a closer review.</p>
+          </div>
+          <div className="bg-[#fdf8ee] border border-[#e8d8a0] rounded-xl p-4">
+            <div className="mb-1 flex items-center gap-2">
+              <p className="text-xs tracking-wider uppercase text-[#8a5a14] font-semibold">Reputation Difference</p>
+              <KnowledgeTooltip label="Reputation difference">
+                This compares outcome differences between candidates from higher- and lower-reputation backgrounds.
+              </KnowledgeTooltip>
+            </div>
+            <p className="text-lg text-[#1c1c1a] font-semibold">
+              {fairnessAudit?.selection_patterns?.prestige_selection_gap ?? 0} pts
+            </p>
+            <p className="text-xs text-[#6b7063] mt-1 leading-relaxed">Compares outcomes for higher- and lower-reputation backgrounds.</p>
+          </div>
+        </div>
+
+        {fairnessAudit?.summary && (
+          <div className="rounded-xl border border-[#e4e1da] bg-white p-4">
+            <p className="text-sm text-[#6b7063] leading-relaxed">{fairnessAudit.summary}</p>
+            {fairnessAudit.warnings?.length ? (
+              <div className="flex flex-wrap gap-2 mt-3">
+                {fairnessAudit.warnings.slice(0, 3).map((warning: string) => (
+                  <span key={warning} className="px-2 py-1 rounded-full bg-[#f7f6f3] border border-[#e4e1da] text-[11px] text-[#6b7063]">
+                    {warning}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        )}
+      </div>
+    </motion.div>
+  );
+
+  const kpiCards = [
+    {
+      label: selectedJob ? 'Selected Position Pool' : 'Active Positions',
+      value: selectedJob ? totalCandidates : activePositions,
+      icon: Briefcase,
+      help: selectedJob
+        ? 'Candidates currently associated with the selected role.'
+        : 'Open roles currently active in the recruiting workspace.',
+    },
+    {
+      label: 'Active Pipeline',
+      value: activePipelineCount,
+      icon: Users,
+      help: 'Candidates still under consideration, excluding hired or rejected records.',
+    },
+    {
+      label: 'Screening Completed',
+      value: screeningCompleted,
+      icon: CheckCircle2,
+      help: 'Candidates who submitted interview or sandbox answers and have an evaluation available.',
+    },
+    {
+      label: 'Hired',
+      value: hiredCandidates,
+      icon: Award,
+      help: 'Candidates marked as hired after the recruiting decision workflow.',
+    },
+    {
+      label: 'Average Position Fit',
+      value: `${averageMatch}%`,
+      icon: Target,
+      help: 'The average Position Fit for the candidates currently shown. It helps HR see whether this visible pool generally matches the selected job.',
+    },
+  ];
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-[#1c1c1a] text-xl font-semibold">{view === 'overview' ? 'Pipeline Overview' : 'Candidates'}</h2>
+          <p className="text-sm text-[#6b7063] mt-0.5">
+            {view === 'overview'
+              ? selectedJob ? `${selectedJob.title} dashboard` : 'All-position analytics and position health'
+              : selectedJob ? `${selectedJob.title} candidate worklist` : 'Filter, review, and manage candidate decisions'}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {isLoading && (
+            <div className="flex items-center gap-2 text-xs text-[#2d6a55] font-semibold bg-[#e8f2ee] px-3.5 py-1.5 rounded-full border border-[#2d6a55]/10">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              Syncing database...
+            </div>
+          )}
+          <button
+            onClick={() => onRefresh()}
+            disabled={isLoading}
+            className="inline-flex items-center justify-center w-9 h-9 bg-white border border-[#e4e1da] rounded-lg text-[#6b7063] hover:text-[#1c1c1a] hover:bg-[#f7f6f3] transition-colors"
+            title="Refresh candidates"
+          >
+            <RefreshCcw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
+      </div>
+
+      {actionError && (
+        <div className="bg-[#fdf2f2] border border-[#f5c2c2] text-[#b91c1c] rounded-xl p-4 text-sm">
+          {actionError}
+        </div>
+      )}
+
+      {view === 'overview' && (
+      <>
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+        className="bg-white border border-[#e4e1da] rounded-2xl p-6 shadow-sm"
+      >
+        <div className="flex items-center justify-between gap-4 mb-5">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 bg-[#e8f2ee] rounded-xl flex items-center justify-center">
+              <Briefcase className="w-4.5 h-4.5 text-[#2d6a55]" style={{ width: '18px', height: '18px' }} />
+            </div>
+            <div>
+              <h3 className="text-[#1c1c1a] font-semibold text-base">Position Dashboards</h3>
+              <p className="text-xs text-[#6b7063]">Select a role to scope the graph, results, and resume review list.</p>
+            </div>
+          </div>
+          <select
+            value={selectedPositionId}
+            onChange={(event) => setSelectedPositionId(event.target.value === 'all' ? 'all' : Number(event.target.value))}
+            className="min-w-56 px-3 py-2 bg-white border border-[#e4e1da] rounded-lg text-sm text-[#1c1c1a] focus:outline-none focus:border-[#2d6a55] focus:ring-1 focus:ring-[#2d6a55]/20"
+          >
+            <option value="all">All positions</option>
+            {jobs.map(job => (
+              <option key={job.id} value={job.id}>{job.title}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
+          {positionStats.map(({ job, pool, completed, hired, average }) => {
+            const isSelected = selectedPositionId === job.id;
+            return (
+              <button
+                key={job.id}
+                type="button"
+                onClick={() => setSelectedPositionId(job.id)}
+                className={`text-left border rounded-xl p-4 transition-colors ${
+                  isSelected ? 'border-[#2d6a55]/50 bg-[#f0f9f4]' : 'border-[#e4e1da] hover:border-[#2d6a55]/30 hover:bg-[#f7f6f3]'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div>
+                    <p className="text-sm text-[#1c1c1a] font-semibold">{job.title}</p>
+                    <p className="text-xs text-[#6b7063] mt-0.5">{job.department}</p>
+                  </div>
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                    job.isOpenForApplications ? 'bg-[#e8f2ee] text-[#2d6a55]' : 'bg-[#f0ede8] text-[#a8a49d]'
+                  }`}>
+                    {job.isOpenForApplications ? 'Open' : 'Closed'}
+                  </span>
+                </div>
+                <div className="grid grid-cols-4 gap-2">
+                  <div>
+                    <p className="text-lg text-[#1c1c1a] font-semibold">{pool.length}</p>
+                    <p className="text-xs text-[#a8a49d]">Candidates</p>
+                  </div>
+                  <div>
+                    <p className="text-lg text-[#2d6a55] font-semibold">{completed}</p>
+                    <p className="text-xs text-[#a8a49d]">Completed</p>
+                  </div>
+                  <div>
+                    <p className="text-lg text-[#245747] font-semibold">{hired}</p>
+                    <p className="text-xs text-[#a8a49d]">Hired</p>
+                  </div>
+                  <div>
+                    <p className="text-lg text-[#c9a84c] font-semibold">{average}%</p>
+                    <p className="text-xs text-[#a8a49d]">Avg fit</p>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {selectedPositionId !== 'all' && (
+          <button
+            type="button"
+            onClick={() => setSelectedPositionId('all')}
+            className="mt-4 text-xs text-[#2d6a55] font-semibold hover:underline"
+          >
+            View all-position dashboard
+          </button>
+        )}
+      </motion.div>
+
+      {/* KPI Strip */}
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        {kpiCards.map(({ label, value, icon: Icon, help }, idx) => (
+          <motion.div
+            key={label}
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: idx * 0.08 }}
+            className="bg-white border border-[#e4e1da] rounded-2xl p-6 hover:border-[#2d6a55]/30 transition-colors shadow-sm"
+          >
+            <div className="flex items-start justify-between mb-4">
+              <div className="w-9 h-9 bg-[#e8f2ee] rounded-xl flex items-center justify-center">
+                <Icon className="w-4.5 h-4.5 text-[#2d6a55]" style={{ width: '18px', height: '18px' }} />
+              </div>
+            </div>
+            <p className="text-3xl text-[#1c1c1a] mb-1 font-semibold">{value}</p>
+            <p className="text-sm text-[#6b7063] inline-flex items-center gap-1.5">
+              <span>{label}</span>
+              <KnowledgeTooltip label={`Explain ${label}`}>{help}</KnowledgeTooltip>
+            </p>
+          </motion.div>
+        ))}
+      </div>
+      </>
+      )}
+
+      {/* Scatter Plot */}
+      {view === 'overview' && (
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.4 }}
+        className="bg-white border border-[#e4e1da] rounded-2xl p-6 shadow-sm"
+      >
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-9 h-9 bg-[#e8f2ee] rounded-xl flex items-center justify-center">
+            <Target className="w-4.5 h-4.5 text-[#2d6a55]" style={{ width: '18px', height: '18px' }} />
+          </div>
+          <div>
+            <div className="inline-flex items-center gap-1.5">
+              <h3 className="text-[#1c1c1a] font-semibold text-base">Trajectory Analysis</h3>
+              <KnowledgeTooltip label="Explain trajectory analysis">
+                This chart compares job match today with growth potential. It helps HR see who is ready now and who may improve quickly.
+              </KnowledgeTooltip>
+            </div>
+            <p className="text-xs text-[#6b7063]">Current-position fit vs. learning velocity</p>
+          </div>
+        </div>
+
+        {scopedCandidates.length > 0 ? (
+          <>
+            <div className="bg-[#f7f6f3] rounded-xl p-4 shadow-inner">
+              <ResponsiveContainer width="100%" height={360}>
+                <ScatterChart margin={{ top: 20, right: 20, bottom: 30, left: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e4e1da" />
+                  <XAxis
+                    type="number"
+                    dataKey="matchScore"
+                    name="Position Fit"
+                    unit="%"
+                    domain={[0, 100]}
+                    label={{ value: 'Position Fit (%)', position: 'insideBottom', offset: -12, style: { fill: '#6b7063', fontSize: 12, fontWeight: 500 } }}
+                    stroke="#e4e1da"
+                    tick={{ fill: '#a8a49d', fontSize: 11 }}
+                  />
+                  <YAxis
+                    type="number"
+                    dataKey="trajectoryScore"
+                    name="Trajectory Slope"
+                    unit="%"
+                    domain={[0, 100]}
+                    label={{ value: 'Trajectory (Learning Rate)', angle: -90, position: 'insideLeft', style: { fill: '#6b7063', fontSize: 12, fontWeight: 500 } }}
+                    stroke="#e4e1da"
+                    tick={{ fill: '#a8a49d', fontSize: 11 }}
+                  />
+                  <ZAxis range={[80, 300]} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Scatter
+                    name="Candidates"
+                    data={scatterData}
+                    fill="#2d6a55"
+                    fillOpacity={0.75}
+                    cursor="pointer"
+                    onClick={(point: any) => {
+                      if (point?.candidate) setSelectedTrajectoryCandidate(point.candidate);
+                    }}
+                  />
+                </ScatterChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 mt-4">
+              <div className="bg-[#f0f9f4] border border-[#c8e6d8] rounded-xl p-4 shadow-sm">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <div className="w-2 h-2 rounded-full bg-[#2d6a55]" />
+                  <p className="text-xs text-[#2d6a55] uppercase tracking-wider font-semibold inline-flex items-center gap-1.5">
+                    <span>High Position Fit + High Trajectory</span>
+                    <KnowledgeTooltip label="Explain high fit and high trajectory">
+                      These candidates look strong for the job now and also show signs they can keep learning quickly.
+                    </KnowledgeTooltip>
+                  </p>
+                </div>
+                <p className="text-xs text-[#3d5a4a] leading-relaxed">
+                  Ideal candidates with strong fit and exceptional growth potential
+                </p>
+              </div>
+              <div className="bg-[#fdf8ee] border border-[#e8d8a0] rounded-xl p-4 shadow-sm">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <div className="w-2 h-2 rounded-full bg-[#c9a84c]" />
+                  <p className="text-xs text-[#c9a84c] uppercase tracking-wider font-semibold inline-flex items-center gap-1.5">
+                    <span>Hidden Gems</span>
+                    <KnowledgeTooltip label="Explain hidden gems">
+                      Candidates who may not look perfect at first glance, but show strong signs of learning, growth, or useful potential.
+                    </KnowledgeTooltip>
+                  </p>
+                </div>
+                <p className="text-xs text-[#5a4d2a] leading-relaxed">
+                  Fast learners with high potential worth considering despite gaps
+                </p>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="h-52 flex flex-col items-center justify-center text-[#a8a49d]">
+            <Target className="w-10 h-10 mb-3 opacity-30 animate-pulse" />
+            <p className="text-sm">No candidate data available</p>
+            {selectedJob && <p className="text-xs mt-1">No candidates have applied to {selectedJob.title} yet.</p>}
+          </div>
+        )}
+      </motion.div>
+      )}
+
+      {view === 'overview' && renderBiasMitigationControls()}
+
+      {/* Active Pipeline */}
+      {(view === 'overview' || view === 'candidates') && (
+      <>
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+        className="bg-white border border-[#e4e1da] rounded-2xl p-6 shadow-sm"
+      >
+        <div className="flex flex-col gap-4 mb-6 border-b border-[#e4e1da] pb-5">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 bg-[#e8f2ee] rounded-xl flex items-center justify-center">
+                <Users className="w-4.5 h-4.5 text-[#2d6a55]" style={{ width: '18px', height: '18px' }} />
+              </div>
+              <div>
+                <h3 className="text-[#1c1c1a] font-semibold text-base">Candidate Pipelines</h3>
+                <p className="text-xs text-[#6b7063]">
+                  {totalFiltered} {totalFiltered === 1 ? 'candidate' : 'candidates'} filtered
+                  {selectedJob ? ` for ${selectedJob.title}` : ''}
+                </p>
+              </div>
+            </div>
+
+            {/* Sort Dropdown */}
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-[#6b7063] font-medium whitespace-nowrap">Sort by:</label>
+              <select
+                value={sortBy}
+                onChange={(e) => {
+                  setSortBy(e.target.value as any);
+                  setCurrentPage(1);
+                }}
+                className="px-3 py-1.5 bg-white border border-[#e4e1da] rounded-lg text-xs text-[#1c1c1a] focus:outline-none focus:border-[#2d6a55]"
+              >
+                <option value="match">Highest Position Fit</option>
+                <option value="match-asc">Lowest Position Fit</option>
+                <option value="velocity">Highest Velocity</option>
+                <option value="name">Name (A-Z)</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid sm:grid-cols-3 gap-2">
+            {[
+              { label: 'Active', value: activePipelineCount, tone: 'bg-[#eef2ff] text-[#3730a3] border-[#c7d2fe]' },
+              { label: 'Hired', value: hiredCandidates, tone: 'bg-[#e8f2ee] text-[#245747] border-[#c8e6d8]' },
+              { label: 'Rejected', value: scopedCandidates.filter(c => c.status === 'rejected').length, tone: 'bg-[#fdf2f2] text-[#b91c1c] border-[#f5c2c2]' }
+            ].map(item => (
+              <div key={item.label} className={`rounded-xl border px-4 py-3 ${item.tone}`}>
+                <p className="text-xs uppercase tracking-wider font-semibold">{item.label}</p>
+                <p className="text-xl font-semibold mt-0.5">{item.value}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Filter Pills */}
+          <div className="flex flex-wrap gap-1.5 items-center">
+            <span className="text-xs text-[#6b7063] font-medium mr-1.5">Status:</span>
+            {[
+              { id: 'all', label: 'All' },
+              { id: 'staged', label: 'Staged' },
+              { id: 'invited', label: 'Invited' },
+              { id: 'applied', label: 'Applied' },
+              { id: 'screening', label: 'Screening' },
+              { id: 'completed', label: 'Completed' },
+              { id: 'hired', label: 'Hired' },
+              { id: 'interview_scheduled', label: 'Interview Scheduled' },
+              { id: 'rejected', label: 'Rejected' }
+            ].map(pill => {
+              const count = pill.id === 'all'
+                ? scopedCandidates.length
+                : scopedCandidates.filter(c => c.status === pill.id).length;
+              const isActive = filterStatus === pill.id;
+              return (
+                <button
+                  key={pill.id}
+                  onClick={() => {
+                    setFilterStatus(pill.id);
+                    setCurrentPage(1);
+                  }}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                    isActive
+                      ? 'bg-[#2d6a55] text-white shadow-sm'
+                      : 'bg-[#f0ede8] text-[#6b7063] hover:text-[#1c1c1a]'
+                  }`}
+                >
+                  {pill.label} ({count})
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Dynamic Success Alert Banner */}
+          {inviteSuccessMessage && (
+            <div className="mt-3 flex items-center justify-between p-3.5 bg-[#e8f2ee] border border-[#2d6a55]/20 rounded-xl text-xs text-[#2d6a55] font-semibold animate-fadeIn">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-[#2d6a55]" />
+                <span>{inviteSuccessMessage}</span>
+              </div>
+              <button onClick={() => setInviteSuccessMessage('')} className="text-[#2d6a55] hover:text-[#245747] font-bold text-sm leading-none">×</button>
+            </div>
+          )}
+
+          {/* F4: Undo status change Toast alert banner */}
+          {lastActionCandidate && (
+            <div className="mt-3 flex items-center justify-between p-3.5 bg-[#fff8ed] border border-[#f2d3a4] rounded-xl text-xs text-[#8a5a14] font-semibold animate-fadeIn shadow-sm">
+              <div className="flex items-center gap-2">
+                <RotateCcw className="w-4 h-4 text-[#8a5a14] animate-spin" style={{ animationDuration: '3s' }} />
+                <span>
+                  Changed <strong className="text-[#1c1c1a]">{lastActionCandidate.name}</strong>'s status from{' '}
+                  <span className="italic font-bold">"{lastActionCandidate.oldStatus}"</span> to{' '}
+                  <span className="italic font-bold">"{lastActionCandidate.newStatus}"</span>.
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => {
+                    const c = lastActionCandidate;
+                    setLastActionCandidate(null);
+                    runAction(c.email, () => onRevertStatus?.(c.email, c.jobId));
+                  }}
+                  disabled={busyEmail === lastActionCandidate.email}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#2d6a55] text-white rounded-lg hover:bg-[#245747] text-xs font-semibold cursor-pointer transition-colors disabled:opacity-50"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  Undo Last Action
+                </button>
+                <button
+                  onClick={() => setLastActionCandidate(null)}
+                  className="text-[#8a5a14] hover:text-[#5a3b0d] font-bold text-sm leading-none cursor-pointer"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {totalFiltered === 0 ? (
+          <div className="text-center py-14">
+            <div className="w-14 h-14 bg-[#f0ede8] rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <Users className="w-7 h-7 text-[#c8c4bc]" />
+            </div>
+            <p className="text-sm text-[#1c1c1a] mb-1 font-semibold">No candidates match this filter</p>
+            <p className="text-xs text-[#6b7063]">Try adjusting your search criteria or choosing a different status pill</p>
+          </div>
+        ) : (
+          <Accordion.Root type="single" collapsible className="space-y-2.5">
+            {paginatedCandidates.map((candidate, index) => {
+              const job = jobs.find(j => j.id === candidate.jobId);
+              const displayName = getDisplayName(candidate);
+              const displayEmail = getDisplayEmail(candidate);
+              const actionEmail = getActionEmail(candidate);
+              const questionFeedbackItems = getQuestionFeedbackItems(candidate);
+
+              // Form bindings
+              const draftOutreach = editedOutreach[candidate.email] ?? candidate.recruitmentEmail ?? '';
+              const draftFeedback = editedFeedback[candidate.email] ?? candidate.hrFeedback ?? '';
+              const isSavingThis = isSavingField[candidate.email] ?? false;
+
+              const saveOutreachField = async () => {
+                setIsSavingField(prev => ({ ...prev, [candidate.email]: true }));
+                try {
+                  await onUpdateOutreachNotes(actionEmail, candidate.jobId, draftOutreach, undefined);
+                  setInviteSuccessMessage(`Outreach email saved successfully for ${candidate.name}!`);
+                  setTimeout(() => setInviteSuccessMessage(''), 4000);
+                } catch (err: any) {
+                  setActionError(err.message || 'Failed to update outreach notes.');
+                } finally {
+                  setIsSavingField(prev => ({ ...prev, [candidate.email]: false }));
+                }
+              };
+
+              const saveFeedbackField = async () => {
+                setIsSavingField(prev => ({ ...prev, [candidate.email]: true }));
+                try {
+                  const result = await onUpdateOutreachNotes(actionEmail, candidate.jobId, undefined, draftFeedback);
+                  const emailMessage = result?.feedback_email_sent
+                    ? ' Candidate was notified by email.'
+                    : result?.smtp_configured === false
+                      ? ' SMTP is not configured, so no email was sent.'
+                      : result?.feedback_email_receipt
+                        ? ' Email delivery was not confirmed.'
+                        : '';
+                  setInviteSuccessMessage(`Notes & feedback saved for ${candidate.name}.${emailMessage}`);
+                  setTimeout(() => setInviteSuccessMessage(''), 4000);
+                } catch (err: any) {
+                  setActionError(err.message || 'Failed to update HR notes.');
+                } finally {
+                  setIsSavingField(prev => ({ ...prev, [candidate.email]: false }));
+                }
+              };
+
+              return (
+                <motion.div
+                  key={`${candidate.email}-${candidate.applicationId || candidate.jobId || index}`}
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <Accordion.Item
+                    value={`candidate-${candidate.id}-${candidate.applicationId || candidate.jobId || index}`}
+                    className="border border-[#e4e1da] rounded-xl overflow-hidden hover:border-[#2d6a55]/30 transition-colors bg-white shadow-sm"
+                  >
+                    <Accordion.Header>
+                      <Accordion.Trigger className="w-full px-5 py-4 bg-[#f7f6f3] hover:bg-[#f0ede8] transition-colors text-left group cursor-pointer">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-4 flex-1 min-w-0">
+                            <div className="relative flex-shrink-0">
+                              {candidate.profilePictureUrl && !brokenImages[candidate.email] ? (
+                                <img
+                                  src={`${API_ORIGIN}${candidate.profilePictureUrl}`}
+                                  alt={displayName}
+                                  onError={() => {
+                                    setBrokenImages(prev => ({ ...prev, [candidate.email]: true }));
+                                  }}
+                                  className="w-12 h-12 rounded-xl object-cover border border-[#e4e1da]"
+                                />
+                              ) : (
+                                <div className="w-12 h-12 bg-[#e8f2ee] rounded-xl flex items-center justify-center text-[#2d6a55] font-semibold text-lg">
+                                  {displayName.charAt(0).toUpperCase()}
+                                </div>
+                              )}
+                              <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-white rounded-full flex items-center justify-center shadow-sm border border-[#e4e1da]">
+                                {candidate.status === 'invited' && <CheckCircle2 className="w-2.5 h-2.5 text-[#2d6a55]" />}
+                                {candidate.status === 'completed' && <Award className="w-2.5 h-2.5 text-[#c9a84c]" />}
+                                {candidate.status === 'hired' && <CheckCircle2 className="w-2.5 h-2.5 text-[#245747]" />}
+                              </div>
+                            </div>
+
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-0.5">
+                                <h4 className="text-sm text-[#1c1c1a] font-semibold">{displayName}</h4>
+                                 
+                                 {/* QS University Ranking Badge */}
+                                 {(() => {
+                                   const rankedSchools = candidate.qsRanking?.filter((r: any) => r.rank !== null && r.rank !== undefined) || [];
+                                   const topQS = rankedSchools.length > 0 ? Math.min(...rankedSchools.map((r: any) => r.rank)) : null;
+                                   return topQS ? (
+                                     <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#e8f2ee] text-[#2d6a55] whitespace-nowrap flex items-center gap-1 border border-[#c8e6d8]">
+                                       🎓 QS #{topQS} {topQS <= 100 ? '🏅 Top 100' : ''}
+                                     </span>
+                                   ) : null;
+                                 })()}
+                                
+                                {/* High position fit badge */}
+                                {candidate.matchScore >= 80 && (
+                                  <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-[#e8f2ee] text-[#2d6a55] whitespace-nowrap flex items-center gap-1">
+                                    <Award className="w-3 h-3" /> High Fit
+                                  </span>
+                                )}
+                                {candidate.resumeContextIntelligence?.high_potential_candidate && (
+                                  <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-[#fef9c3] text-[#854d0e] whitespace-nowrap">
+                                    High Potential
+                                  </span>
+                                )}
+                                {candidate.resumeContextIntelligence?.undervalued_talent_alert && (
+                                  <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-[#fff7ed] text-[#c2410c] whitespace-nowrap">
+                                    Undervalued Talent
+                                  </span>
+                                )}
+                                {(() => {
+                                  const phase = getCandidatePhase(candidate.status, candidate.answers);
+                                  const classes = 
+                                    phase === 'Waiting for Screening' ? 'bg-[#f0ede8] text-[#6b7063]' :
+                                    phase === 'Screening Completed' ? 'bg-[#fff7ed] text-[#c2410c]' :
+                                    phase === 'Waiting for Interview' ? 'bg-[#fef9c3] text-[#854d0e]' :
+                                    phase === 'Interview In Progress' ? 'bg-[#e0e7ff] text-[#3730a3]' :
+                                    phase === 'Rejected' ? 'bg-[#b91c1c] text-white border border-[#991b1b]' :
+                                    phase === 'Hired' ? 'bg-[#dcfce7] text-[#15803d]' :
+                                    'bg-[#f0ede8] text-[#6b7063]';
+                                  return (
+                                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${classes}`}>
+                                      {phase}
+                                    </span>
+                                  );
+                                })()}
+                                {isPendingInterview(candidate.status, candidate.answers) && (
+                                  <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-[#fff8ed] text-[#8a5a14] border border-[#f2d3a4] whitespace-nowrap">
+                                    pending interview
+                                  </span>
+                                )}
+                                <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-white border border-[#e4e1da] text-[#6b7063] whitespace-nowrap">
+                                  {candidate.sourceMethod === 'prototype_auto_source' ? 'LinkedIn auto search' : candidate.sourceMethod === 'manual_authenticated' ? 'LinkedIn authenticated' : candidate.sourceType === 'linkedin' ? 'LinkedIn manual add' : 'Inbound resume'}
+                                </span>
+                              </div>
+                              <p className="text-xs text-[#6b7063] truncate">{neutralizeText(candidate.headline)}</p>
+                              <p className="text-xs text-[#a8a49d] mt-0.5">{job?.title || 'Sourced Position'}</p>
+                            </div>
+
+                            <div className="flex items-center gap-5 mr-4 flex-shrink-0">
+                              <div className="text-center">
+                                <div className={`text-lg font-semibold ${
+                                  candidate.matchScore >= 80 ? 'text-[#2d6a55]' :
+                                  candidate.matchScore >= 60 ? 'text-[#c9a84c]' :
+                                  'text-[#6b7063]'
+                                }`}>{candidate.matchScore}</div>
+                                <div className="text-xs text-[#a8a49d] inline-flex items-center justify-center gap-1">
+                                  <span>Position Fit</span>
+                                  <KnowledgeTooltip label="Explain position fit">{positionFitHelp}</KnowledgeTooltip>
+                                </div>
+                              </div>
+                              <div className="text-center">
+                                <div className="text-lg text-[#c9a84c] font-semibold">{candidate.trajectoryScore}</div>
+                                <div className="text-xs text-[#a8a49d] inline-flex items-center justify-center gap-1">
+                                  <span>Velocity</span>
+                                  <KnowledgeTooltip label="Explain velocity">{velocityHelp}</KnowledgeTooltip>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                          <ChevronDown className="w-4 h-4 text-[#a8a49d] transition-transform duration-200 group-data-[state=open]:rotate-180 flex-shrink-0" />
+                        </div>
+                      </Accordion.Trigger>
+                    </Accordion.Header>
+
+                    <Accordion.Content className="px-5 py-5 border-t border-[#e4e1da] bg-white overflow-hidden">
+                      <div className="space-y-5">
+                        {/* Executive Summary */}
+                        {candidate.sourcingPitch && (
+                          <div className="bg-[#f7f6f3] border border-[#e4e1da] rounded-xl p-4 shadow-sm">
+                            <p className="text-xs tracking-wider uppercase text-[#a8a49d] mb-2 font-semibold">Why This Person?</p>
+                            <p className="text-sm text-[#6b7063] leading-relaxed italic">
+                              "{neutralizeText(candidate.sourcingPitch)}"
+                            </p>
+                          </div>
+                        )}
+
+                        {view === 'overview' && hasInterviewFeedbackDetails(candidate) && (
+                          <div className="bg-[#f7f6f3] border border-[#e4e1da] rounded-xl p-4 shadow-sm text-left">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between mb-4">
+                              <div>
+                                <div className="inline-flex items-center gap-1.5">
+                                  <p className="text-xs tracking-wider uppercase text-[#2d6a55] font-semibold">Interview Questions, Answers & Agent Feedback</p>
+                                  <KnowledgeTooltip label="Explain interview feedback">
+                                    This is the per-candidate screening transcript. The agent evaluates each submitted answer against the exact question and selected job requirements.
+                                  </KnowledgeTooltip>
+                                </div>
+                                <p className="text-xs text-[#6b7063] mt-1">Detailed HR review attached to this candidate's pipeline record.</p>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                {candidate.screeningScore !== undefined && (
+                                  <span className="rounded-full bg-white border border-[#e4e1da] px-2.5 py-1 text-xs font-semibold text-[#1c1c1a] inline-flex items-center gap-1.5">
+                                    <span>Score: {candidate.screeningScore}/100</span>
+                                    <KnowledgeTooltip label="Explain screening score">
+                                      Overall screening score from this candidate's submitted answers. Improper, blank, or unrelated answers should score zero.
+                                    </KnowledgeTooltip>
+                                  </span>
+                                )}
+                                {(() => {
+                                  const feedbackPhase = getCandidatePhase(candidate.status, candidate.answers);
+                                  const feedbackPhaseClasses = feedbackPhase === 'Rejected'
+                                    ? 'bg-[#b91c1c] border-[#991b1b] text-white'
+                                    : 'bg-[#e8f2ee] border-[#c8e6d8] text-[#2d6a55]';
+                                  return (
+                                    <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${feedbackPhaseClasses}`}>
+                                      {feedbackPhase}
+                                    </span>
+                                  );
+                                })()}
+                              </div>
+                            </div>
+
+                            {candidate.evaluation?.role_alignment_summary && (
+                              <p className="text-xs text-[#6b7063] leading-relaxed mb-4 border-t border-[#e4e1da] pt-3">
+                                {candidate.evaluation.role_alignment_summary}
+                              </p>
+                            )}
+
+                            <div className="space-y-3">
+                              {questionFeedbackItems.map((item: any, critiqueIndex: number) => {
+                                const answer = item.candidate_answer || candidate.answers?.[critiqueIndex] || item.candidate_answer_excerpt || '';
+                                return (
+                                  <div key={`${candidate.email}-overview-pipeline-feedback-${critiqueIndex}`} className="bg-white border border-[#e4e1da] rounded-lg p-3">
+                                    <div className="flex items-center justify-between gap-3 mb-2">
+                                      <p className="text-xs text-[#2d6a55] font-semibold">Question {critiqueIndex + 1}</p>
+                                      {item.per_answer_score !== undefined && (
+                                        <span className="text-xs text-[#1c1c1a] font-semibold inline-flex items-center gap-1.5">
+                                          <span>{item.per_answer_score}/100</span>
+                                          <KnowledgeTooltip label="Explain per-question score">
+                                            This score rates only this answer against its question, requirement focus, evidence, and communication quality.
+                                          </KnowledgeTooltip>
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="text-xs text-[#1c1c1a] font-medium leading-relaxed">
+                                      {cleanQuestionText(item.question || candidate.customQuestions?.[critiqueIndex] || `Screening question ${critiqueIndex + 1}`, critiqueIndex)}
+                                    </p>
+                                    <div className="mt-2 rounded-lg border border-[#e4e1da] bg-[#f7f6f3] p-3">
+                                      <p className="text-[10px] font-semibold uppercase text-[#a8a49d] mb-1">Candidate Answer</p>
+                                      <p className="text-xs text-[#52574e] leading-relaxed whitespace-pre-wrap">{answer || 'No answer submitted'}</p>
+                                    </div>
+                                    <div className="mt-2 rounded-lg border border-[#c8e6d8] bg-[#f0f7f4] p-3">
+                                      <p className="text-[10px] font-semibold uppercase text-[#2d6a55] mb-1 inline-flex items-center gap-1.5">
+                                        <span>Agent feedback</span>
+                                        <KnowledgeTooltip label="Explain agent feedback">
+                                          Professional interviewer-style critique that cites the answer, explains the score, and identifies what HR should verify next.
+                                        </KnowledgeTooltip>
+                                      </p>
+                                      <p className="text-xs text-[#245747] leading-relaxed">
+                                        {alignScoreMentions(item.critique || item.feedback || item.hiring_manager_note || 'Feedback has not been generated for this question yet.', item.per_answer_score)}
+                                      </p>
+                                    </div>
+                                    {item.strengths?.length ? (
+                                      <div className="mt-3">
+                                        <p className="text-[10px] text-[#2d6a55] uppercase tracking-wider font-semibold mb-1.5">Evidence supporting the score</p>
+                                        <ul className="space-y-1">
+                                          {item.strengths.map((strength: string, strengthIndex: number) => (
+                                            <li key={strengthIndex} className="text-xs text-[#3d5a4a] leading-relaxed flex items-start gap-1.5">
+                                              <CheckCircle2 className="w-3 h-3 text-[#2d6a55] flex-shrink-0 mt-0.5" />
+                                              <span>{strength}</span>
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    ) : null}
+                                    {item.weaknesses?.length ? (
+                                      <div className="mt-3">
+                                        <p className="text-[10px] text-[#c25a2a] uppercase tracking-wider font-semibold mb-1.5">Risks or missing proof</p>
+                                        <ul className="space-y-1">
+                                          {item.weaknesses.map((weakness: string, weaknessIndex: number) => (
+                                            <li key={weaknessIndex} className="text-xs text-[#6b7063] leading-relaxed flex items-start gap-1.5">
+                                              <AlertCircle className="w-3 h-3 text-[#c25a2a] flex-shrink-0 mt-0.5" />
+                                              <span>{weakness}</span>
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    ) : null}
+                                    {item.suggested_improvement && (
+                                      <p className="mt-3 rounded-lg border border-[#e4e1da] bg-[#f7f6f3] p-3 text-xs text-[#6b7063] leading-relaxed">
+                                        <span className="font-semibold text-[#1c1c1a] inline-flex items-center gap-1.5">
+                                          <span>Suggested probe:</span>
+                                          <KnowledgeTooltip label="Explain suggested probe">
+                                            A follow-up question HR can ask to verify weak evidence, clarify risk, or test role-specific depth.
+                                          </KnowledgeTooltip>
+                                        </span> {item.suggested_improvement}
+                                      </p>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {candidate.positionFitSummary && (
+                          <div className="bg-[#f0f9f4] border border-[#c8e6d8] rounded-xl p-4 shadow-sm">
+                            <p className="text-xs tracking-wider uppercase text-[#2d6a55] mb-2 font-semibold">Current Position Fit Reasoning</p>
+                            <p className="text-sm text-[#3d5a4a] leading-relaxed">
+                              {neutralizeText(candidate.positionFitSummary)}
+                            </p>
+                            {candidate.fitBreakdown?.must_have && (
+                              <div className="grid md:grid-cols-3 gap-3 mt-3 text-xs">
+                                <div>
+                                  <p className="text-[#2d6a55] font-semibold mb-1">Matched</p>
+                                  <p className="text-[#6b7063] leading-relaxed">{candidate.fitBreakdown.must_have.matched?.join(', ') || 'None yet'}</p>
+                                </div>
+                                <div>
+                                  <p className="text-[#8a5a14] font-semibold mb-1">Partial</p>
+                                  <p className="text-[#6b7063] leading-relaxed">{candidate.fitBreakdown.must_have.partial?.join(', ') || 'None'}</p>
+                                </div>
+                                <div>
+                                  <p className="text-[#b91c1c] font-semibold mb-1">Verify</p>
+                                  <p className="text-[#6b7063] leading-relaxed">{candidate.fitBreakdown.must_have.missing?.join(', ') || 'No major gaps'}</p>
+                                </div>
+                              </div>
+                            )}
+                            {(candidate.scoreExplanation || candidate.scoreContributors?.length) && (
+                              <div className="mt-4 pt-4 border-t border-[#c8e6d8]">
+                                <p className="text-xs tracking-wider uppercase text-[#2d6a55] mb-2 font-semibold">Match Score Calculation</p>
+                                
+                                {/* Side-by-side Fair vs Biased Scoring Comparison Grid */}
+                                <div className="bg-[#fcfbf9] border border-[#e4e1da] rounded-2xl p-4 mb-4 shadow-sm text-left">
+                                  <div className="mb-3.5 flex items-center gap-2">
+                                    <p className="text-xs tracking-wider uppercase text-[#1c1c1a] font-bold">Transparent Score Comparison</p>
+                                    <KnowledgeTooltip label="How transparent scoring works">
+                                      This compares blind merit scoring with prestige-aware scoring so HR can see exactly how institutional reputation changes a candidate's score.
+                                    </KnowledgeTooltip>
+                                  </div>
+                                  <div className="grid md:grid-cols-2 gap-4">
+                                    {/* Fair Scoring Card */}
+                                    <div className="bg-[#f0f9f4] border border-[#c8e6d8] rounded-xl p-4 flex flex-col justify-between shadow-sm">
+                                      <div>
+                                        <div className="flex items-center gap-1.5 mb-1.5">
+                                          <span className="w-2.5 h-2.5 rounded-full bg-[#2d6a55]" />
+                                          <p className="text-xs text-[#2d6a55] font-bold uppercase tracking-wider">Fair Scoring (Blind Merit)</p>
+                                        </div>
+                                        <p className="text-xs text-[#6b7063] leading-relaxed">
+                                          Zero bias scoring mode. Focuses entirely on candidate skills and role-relevant experience. Pedigree indicators (schools and big company brands) are completely ignored.
+                                        </p>
+                                      </div>
+                                      <div className="mt-5">
+                                        <p className="text-3xl font-extrabold text-[#2d6a55]">
+                                          {candidate.biasControl?.fair_score ?? candidate.matchScore}%
+                                        </p>
+                                        <span className="text-[10px] text-[#a8a49d] font-semibold">Ranked by pure merit & capability</span>
+                                      </div>
+                                    </div>
+
+                                    {/* Biased Scoring Card */}
+                                    <div className="bg-[#fff7ed] border border-[#ffedd5] rounded-xl p-4 flex flex-col justify-between shadow-sm">
+                                      <div>
+                                        <div className="flex items-center gap-1.5 mb-1.5">
+                                          <span className="w-2.5 h-2.5 rounded-full bg-[#c2410c]" />
+                                          <p className="text-xs text-[#c2410c] font-bold uppercase tracking-wider">Prestige-Aware (Biased)</p>
+                                        </div>
+                                        <p className="text-xs text-[#6b7063] leading-relaxed">
+                                          Pedigree reputation scoring active. Candidate scores are adjusted by university and employer prestige indicators, adding positive pedigree weight.
+                                        </p>
+                                      </div>
+                                      <div className="mt-5">
+                                        <p className="text-3xl font-extrabold text-[#c2410c]">
+                                          {candidate.biasControl?.biased_score ?? candidate.matchScore}%
+                                        </p>
+                                        <span className="text-[10px] text-[#a8a49d] font-semibold">Includes institutional pedigree signals</span>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {candidate.biasControl?.calculation && (
+                                    <div className="mt-4 rounded-xl border border-[#e4e1da] bg-white p-3">
+                                      <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
+                                        <p className="text-[10px] tracking-wider uppercase text-[#6b7063] font-bold">Active Formula</p>
+                                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                                          (candidate.biasControl.calculation.delta || 0) > 0
+                                            ? 'bg-[#fff7ed] text-[#c2410c]'
+                                            : (candidate.biasControl.calculation.delta || 0) < 0
+                                              ? 'bg-[#fdf2f2] text-[#b91c1c]'
+                                              : 'bg-[#f0ede8] text-[#6b7063]'
+                                        }`}>
+                                          {(candidate.biasControl.calculation.delta || 0) > 0 ? '+' : ''}{candidate.biasControl.calculation.delta || 0} pts
+                                        </span>
+                                      </div>
+                                      <p className="text-xs text-[#1c1c1a] font-semibold leading-relaxed">
+                                        {candidate.biasControl.calculation.formula || `round((${candidate.biasControl.calculation.fair_score} x ${candidate.biasControl.calculation.merit_weight}%) + (${candidate.biasControl.calculation.reputation_score} x ${candidate.biasControl.calculation.reputation_weight}%)) = ${candidate.biasControl.calculation.final_score}`}
+                                      </p>
+                                      {(candidate.biasControl.calculation.delta || 0) === 0 && (candidate.biasControl.calculation.reputation_weight || 0) > 0 && (
+                                        <p className="mt-1.5 text-[11px] text-[#6b7063] leading-relaxed">
+                                          The rounded score stayed the same because the merit score and reputation score are close at this weight.
+                                        </p>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {/* Three-Tier Scoring Separated Display */}
+                                  <div className="mt-4 pt-4 border-t border-[#e4e1da]">
+                                    <p className="text-xs tracking-wider uppercase text-[#1c1c1a] mb-3 font-bold">Category Scoring Separation</p>
+                                    <div className="grid grid-cols-3 gap-2">
+                                      <div className="bg-white border border-[#e4e1da] rounded-xl p-3 text-center shadow-sm">
+                                        <p className="text-[10px] tracking-wider uppercase text-[#6b7063] font-semibold">Skills Score</p>
+                                        <p className="text-lg font-bold text-[#2d6a55] mt-1">
+                                          {candidate.biasControl?.three_tier_scores?.skills_score ?? (candidate.scoreContributors?.find((i: any) => i.factor.includes('Must-have') || i.factor.includes('Skill'))?.score ?? 80)}/100
+                                        </p>
+                                      </div>
+                                      <div className="bg-white border border-[#e4e1da] rounded-xl p-3 text-center shadow-sm">
+                                        <p className="text-[10px] tracking-wider uppercase text-[#6b7063] font-semibold">Experience Score</p>
+                                        <p className="text-lg font-bold text-[#2d6a55] mt-1">
+                                          {candidate.biasControl?.three_tier_scores?.experience_score ?? (
+                                            Math.round(
+                                              (candidate.scoreContributors?.find((i: any) => i.factor.includes('Domain'))?.score ?? 75) * 0.6 + 
+                                              (candidate.scoreContributors?.find((i: any) => i.factor.includes('Trajectory'))?.score ?? 75) * 0.4
+                                            )
+                                          )}/100
+                                        </p>
+                                      </div>
+                                      <div className="bg-white border border-[#e4e1da] rounded-xl p-3 text-center shadow-sm">
+                                        <p className="text-[10px] tracking-wider uppercase text-[#6b7063] font-semibold">Reputation Score</p>
+                                        <p className="text-lg font-bold text-[#c9a84c] mt-1">
+                                          {candidate.biasControl?.three_tier_scores?.reputation_score ?? (candidate.biasControl?.prestige_score ?? candidate.prestigeAnalysis?.prestige_score ?? 35)}/100
+                                        </p>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {candidate.scoreExplanation && (
+                                  <p className="text-xs text-[#3d5a4a] leading-relaxed mb-3">
+                                    {neutralizeText(candidate.scoreExplanation)}
+                                  </p>
+                                )}
+                                {candidate.scoreContributors?.length ? (
+                                  <div className="grid md:grid-cols-2 gap-2">
+                                    {candidate.scoreContributors.map((item, contributorIndex) => (
+                                      <div key={`${item.factor}-${contributorIndex}`} className="bg-white border border-[#c8e6d8] rounded-lg p-3">
+                                        <div className="flex items-center justify-between gap-2 mb-1">
+                                          <p className="text-xs text-[#1c1c1a] font-semibold">{item.factor}</p>
+                                          <span className="text-xs text-[#2d6a55] font-semibold">{item.score}/100</span>
+                                        </div>
+                                        <p className="text-[11px] text-[#6b7063] leading-relaxed">
+                                          Weight {item.weight}% · contributes {item.impact} points. {neutralizeText(item.reason || '')}
+                                        </p>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : null}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {(candidate.biasControl || candidate.prestigeAnalysis || candidate.resumeContextIntelligence?.signals?.length) && (
+                          <div className="bg-[#f7f6f3] border border-[#e4e1da] rounded-xl p-4 shadow-sm">
+                            <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                              <div>
+                                <p className="text-xs tracking-wider uppercase text-[#a8a49d] mb-1 font-semibold">Why the score changed</p>
+                                <p className="text-sm text-[#1c1c1a] font-semibold">
+                                  {candidate.biasControl?.scoring_mode === 'prestige_aware' ? 'School/company reputation included' : 'Focused on skills only'}
+                                </p>
+                              </div>
+                              <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                                candidate.biasControl?.prestige_affects_score ? 'bg-[#fff7ed] text-[#c2410c]' : 'bg-[#e8f2ee] text-[#2d6a55]'
+                              }`}>
+                                {candidate.biasControl?.prestige_affects_score ? `School/company reputation counts for ${candidate.biasControl?.prestige_weight || 0}%` : 'School/company reputation not counted'}
+                              </span>
+                            </div>
+                            {candidate.biasControl?.explanation && (
+                              <p className="text-sm text-[#6b7063] leading-relaxed mb-3">{candidate.biasControl.explanation}</p>
+                            )}
+                            {candidate.prestigeAnalysis?.prestige_indicators?.length ? (
+                              <p className="text-xs text-[#6b7063] leading-relaxed mb-3">
+                                {candidate.prestigeAnalysis.prestige_indicators.length} school or company background detail{candidate.prestigeAnalysis.prestige_indicators.length === 1 ? '' : 's'} found.
+                              </p>
+                            ) : null}
+                            {candidate.prestigeAnalysis?.prestige_indicators?.length ? (
+                              <div className="flex flex-wrap gap-2 mb-3">
+                                {candidate.prestigeAnalysis.prestige_indicators.slice(0, 6).map((indicator, indicatorIndex) => (
+                                  <span key={`${indicator.original}-${indicatorIndex}`} className="px-2.5 py-1 rounded-full bg-white border border-[#e4e1da] text-[11px] text-[#6b7063] inline-flex items-center gap-1.5 flex-wrap">
+                                    <span>
+                                      {neutralize ? indicator.neutral_category : `${indicator.original} shown as ${indicator.neutral_category}`}
+                                    </span>
+                                    {indicator.qs_rank && (
+                                      <span className="bg-[#e8f2ee] text-[#2d6a55] px-1 py-0.2 rounded text-[9px] font-bold inline-flex items-center gap-1 flex-wrap">
+                                        <span>QS Rank: #{indicator.qs_rank}</span>
+                                        {indicator.qs_badge && (
+                                          <span className="bg-[#2d6a55] text-white px-1 py-0.2 rounded-[3px] text-[8px] font-extrabold uppercase">
+                                            {indicator.qs_badge}
+                                          </span>
+                                        )}
+                                      </span>
+                                    )}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : null}
+                            {candidate.resumeContextIntelligence?.signals?.length ? (
+                              <div className="space-y-1">
+                                {candidate.resumeContextIntelligence.signals.map(signal => (
+                                  <p key={signal} className="text-xs text-[#2d6a55] font-medium">{signal}</p>
+                                ))}
+                              </div>
+                            ) : null}
+                          </div>
+                        )}
+
+                        {candidate.sourceWarning && (
+                          <div className="bg-[#fff8ed] border border-[#f2d3a4] rounded-xl p-4 shadow-sm">
+                            <p className="text-xs tracking-wider uppercase text-[#8a5a14] mb-2 font-semibold">LinkedIn Source Verification</p>
+                            <div className="flex flex-wrap gap-2 mb-2">
+                              <span className="px-2 py-0.5 rounded-full bg-white border border-[#f2d3a4] text-xs font-semibold text-[#8a5a14]">
+                                {candidate.sourceMethod === 'prototype_auto_source' ? 'LinkedIn auto search' : candidate.sourceMethod === 'manual_authenticated' ? 'LinkedIn authenticated' : candidate.sourceType === 'linkedin' ? 'LinkedIn manual add' : 'Inbound resume'}
+                              </span>
+                            </div>
+                            <p className="text-sm text-[#6b7063] leading-relaxed">{candidate.sourceWarning}</p>
+                            {candidate.sourceStatus && (
+                              <p className="text-xs text-[#a8a49d] mt-2">Extraction status: {candidate.sourceStatus}</p>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Actions Control Panel */}
+                        <div className="bg-white border border-[#e4e1da] rounded-xl p-4 shadow-sm">
+                          <div className="flex items-center justify-between gap-3 mb-3">
+                            <p className="text-xs tracking-wider uppercase text-[#a8a49d] font-semibold">Manage Candidate Status</p>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {candidate.status === 'staged' && (
+                              <button
+                                onClick={async () => {
+                                  const result: any = await runAction(actionEmail, () => onInvite(actionEmail, draftOutreach, draftFeedback));
+                                  if (!result) return;
+                                  const message = result?.outreach_sent
+                                    ? `Invitation email sent to ${candidate.name}.`
+                                    : result?.smtp_configured === false
+                                      ? `Invitation saved for ${candidate.name}. SMTP is not configured, so no email was sent.`
+                                      : `Invitation saved for ${candidate.name}. Email delivery was not confirmed.`;
+                                  setInviteSuccessMessage(message);
+                                  toast.success(message);
+                                  setTimeout(() => setInviteSuccessMessage(''), 4500);
+                                }}
+                                disabled={busyEmail === actionEmail}
+                                className="inline-flex items-center gap-2 px-3 py-2 bg-[#2d6a55] text-white rounded-lg hover:bg-[#245747] disabled:opacity-50 text-xs font-medium transition-colors cursor-pointer"
+                              >
+                                <Mail className="w-3.5 h-3.5" />
+                                Send Invite & Outreach
+                              </button>
+                            )}
+
+                            {/* Manual screening workflow buttons for screening candidates (F5) */}
+                            {candidate.status === 'screening' ? (
+                              <div className="flex flex-wrap gap-2 w-full p-3 bg-[#fdf0e6]/40 border border-[#c25a2a]/20 rounded-xl mb-1">
+                                <div className="w-full text-xs font-semibold text-[#c25a2a] mb-1.5">Manual Screening Decisions:</div>
+                                <button
+                                  onClick={() => runAction(actionEmail, () => onStatusChange(actionEmail, 'completed', candidate.jobId))}
+                                  disabled={busyEmail === actionEmail}
+                                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-[#2d6a55] text-white rounded-lg hover:bg-[#245747] disabled:opacity-50 text-xs font-medium transition-colors cursor-pointer"
+                                >
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                  Pass Screening / Mark Complete
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    if (window.confirm(`Complete hiring for ${candidate.name}? This will move the candidate into the Hired category.`)) {
+                                      runAction(actionEmail, () => onStatusChange(actionEmail, 'hired', candidate.jobId));
+                                    }
+                                  }}
+                                  disabled={busyEmail === actionEmail}
+                                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-[#245747] text-white rounded-lg hover:bg-[#1f4a3d] disabled:opacity-50 text-xs font-medium transition-colors cursor-pointer"
+                                >
+                                  <Award className="w-3.5 h-3.5" />
+                                  Complete Hire
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setScheduleTarget(candidate);
+                                    setScheduleDate(candidate.interviewSlot?.date || '');
+                                    setScheduleTime(candidate.interviewSlot?.time || '');
+                                    setScheduleLocation(candidate.interviewSlot?.location || 'To be confirmed');
+                                    setScheduleNotes(candidate.interviewSlot?.notes || '');
+                                  }}
+                                  disabled={busyEmail === actionEmail}
+                                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-[#eef2ff] border border-[#c7d2fe] text-[#3730a3] rounded-lg hover:bg-[#e0e7ff] disabled:opacity-50 text-xs font-medium transition-colors cursor-pointer"
+                                >
+                                  <Calendar className="w-3.5 h-3.5" />
+                                  Schedule Interview
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setRejectTarget(candidate);
+                                    setRejectFeedback('');
+                                    setRejectMessage('Thank you for applying. After careful consideration, we have decided to move forward with other candidates whose experience more closely matches our current needs. We appreciate the time you invested and wish you success in your career journey.');
+                                  }}
+                                  disabled={busyEmail === actionEmail}
+                                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-white border border-[#f0c9c9] text-[#b91c1c] rounded-lg hover:bg-[#fdf2f2] disabled:opacity-50 text-xs font-medium transition-colors cursor-pointer"
+                                >
+                                  <XCircle className="w-3.5 h-3.5" />
+                                  Reject Candidate
+                                </button>
+                              </div>
+                            ) : (
+                              <>
+                                {/* F3: Combined Mark Screening / Mark Complete split-button */}
+                                {candidate.status !== 'completed' && candidate.status !== 'hired' && candidate.status !== 'rejected' && candidate.status !== 'interview_scheduled' && (
+                                  <div className="relative inline-flex rounded-lg shadow-sm" style={{ isolation: 'isolate' }}>
+                                    {/* Primary: Mark Screening */}
+                                    <button
+                                      onClick={() => runAction(actionEmail, () => onStatusChange(actionEmail, 'screening', candidate.jobId))}
+                                      disabled={busyEmail === actionEmail}
+                                      className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-[#e4e1da] text-[#1c1c1a] rounded-l-lg hover:bg-[#f7f6f3] disabled:opacity-50 text-xs font-medium transition-colors cursor-pointer border-r-0"
+                                    >
+                                      <UserCheck className="w-3.5 h-3.5" />
+                                      Mark Screening
+                                    </button>
+                                    {/* Dropdown toggle */}
+                                    <button
+                                      onClick={() => setOpenMarkDropdown(prev => prev === actionEmail ? '' : actionEmail)}
+                                      disabled={busyEmail === actionEmail}
+                                      className="inline-flex items-center justify-center px-2 py-2 bg-white border border-[#e4e1da] text-[#6b7063] rounded-r-lg hover:bg-[#f7f6f3] hover:text-[#1c1c1a] disabled:opacity-50 text-xs transition-colors cursor-pointer"
+                                      title="More options"
+                                    >
+                                      <ChevronDown className={`w-3 h-3 transition-transform duration-150 ${openMarkDropdown === actionEmail ? 'rotate-180' : ''}`} />
+                                    </button>
+                                    {/* Dropdown: Mark Complete */}
+                                    {openMarkDropdown === actionEmail && (
+                                      <div className="absolute top-full left-0 mt-1 z-20 bg-white border border-[#e4e1da] rounded-xl shadow-lg overflow-hidden min-w-[160px]">
+                                        <button
+                                          onClick={() => {
+                                            setOpenMarkDropdown('');
+                                            runAction(actionEmail, () => onStatusChange(actionEmail, 'completed', candidate.jobId));
+                                          }}
+                                          disabled={busyEmail === actionEmail}
+                                          className="w-full inline-flex items-center gap-2 px-4 py-2.5 hover:bg-[#f0f9f4] text-xs font-medium text-[#2d6a55] transition-colors cursor-pointer"
+                                        >
+                                          <CheckCircle2 className="w-3.5 h-3.5" />
+                                          Mark Complete
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                                {candidate.status !== 'hired' && candidate.status !== 'rejected' && candidate.status !== 'interview_scheduled' && (
+                                  <button
+                                    onClick={() => {
+                                      setScheduleTarget(candidate);
+                                      setScheduleDate(candidate.interviewSlot?.date || '');
+                                      setScheduleTime(candidate.interviewSlot?.time || '');
+                                      setScheduleLocation(candidate.interviewSlot?.location || 'To be confirmed');
+                                      setScheduleNotes(candidate.interviewSlot?.notes || '');
+                                    }}
+                                    disabled={busyEmail === actionEmail}
+                                    className="inline-flex items-center gap-2 px-3 py-2 bg-[#eef2ff] border border-[#c7d2fe] text-[#3730a3] rounded-lg hover:bg-[#e0e7ff] disabled:opacity-50 text-xs font-medium transition-colors cursor-pointer"
+                                  >
+                                    <Calendar className="w-3.5 h-3.5" />
+                                    Schedule Interview
+                                  </button>
+                                )}
+                                {candidate.status !== 'hired' && candidate.status !== 'rejected' && (
+                                  <button
+                                    onClick={() => {
+                                      setRejectTarget(candidate);
+                                      setRejectFeedback('');
+                                      setRejectMessage('Thank you for applying. After careful consideration, we have decided to move forward with other candidates whose experience more closely matches our current needs. We appreciate the time you invested and wish you success in your career journey.');
+                                    }}
+                                    disabled={busyEmail === actionEmail}
+                                    className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-[#f0c9c9] text-[#b91c1c] rounded-lg hover:bg-[#fdf2f2] disabled:opacity-50 text-xs font-medium transition-colors cursor-pointer"
+                                  >
+                                    <XCircle className="w-3.5 h-3.5" />
+                                    Reject
+                                  </button>
+                                )}
+                                {candidate.status !== 'hired' && candidate.status !== 'rejected' && (
+                                  <button
+                                    onClick={() => {
+                                      if (window.confirm(`Complete hiring for ${candidate.name}? This will finalize recruitment for this candidate.`)) {
+                                        runAction(actionEmail, () => onStatusChange(actionEmail, 'hired', candidate.jobId));
+                                      }
+                                    }}
+                                    disabled={busyEmail === actionEmail}
+                                    className="inline-flex items-center gap-2 px-3 py-2 bg-[#245747] text-white rounded-lg hover:bg-[#1f4a3d] disabled:opacity-50 text-xs font-medium transition-colors cursor-pointer"
+                                  >
+                                    <Award className="w-3.5 h-3.5" />
+                                    Complete Hire
+                                  </button>
+                                )}
+                              </>
+                            )}
+
+
+                            <button
+                              onClick={() => {
+                                if (window.confirm(`Delete ${candidate.name} from the pipeline?`)) {
+                                  runAction(actionEmail, () => onDelete(actionEmail));
+                                }
+                              }}
+                              disabled={busyEmail === actionEmail}
+                              className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-[#f0c9c9] text-[#b91c1c] rounded-lg hover:bg-[#fdf2f2] disabled:opacity-50 text-xs font-medium transition-colors cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              Delete
+                            </button>
+
+                            {/* F4: Undo Last Status */}
+                            {onRevertStatus && candidate.statusHistory && candidate.statusHistory.length > 0 && (
+                              <button
+                                onClick={() => {
+                                  if (window.confirm(`Undo the last status change for ${candidate.name}? This will revert them from "${candidate.status}" back to "${candidate.statusHistory![candidate.statusHistory!.length - 1]}".`)) {
+                                    runAction(actionEmail, () => onRevertStatus(actionEmail, candidate.jobId));
+                                  }
+                                }}
+                                disabled={busyEmail === actionEmail}
+                                className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-[#e4e1da] text-[#6b7063] rounded-lg hover:bg-[#f7f6f3] hover:text-[#1c1c1a] disabled:opacity-50 text-xs font-medium transition-colors cursor-pointer"
+                                title={`Undo: revert to "${candidate.statusHistory[candidate.statusHistory.length - 1]}"`}
+                              >
+                                <RotateCcw className="w-3.5 h-3.5" />
+                                Undo Last Status
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* F1: Outreach Email Editable Area & F2: Candidate-visible HR feedback */}
+                        <div className="grid md:grid-cols-2 gap-4">
+                          {/* F6: Editable Outreach email text area */}
+                          <div className="bg-white border border-[#e4e1da] rounded-xl p-4 shadow-sm space-y-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs tracking-wider uppercase text-[#a8a49d] font-semibold">Outreach Recruitment Pitch</span>
+                              <span className="text-[10px] text-[#2d6a55] font-semibold">Draft</span>
+                            </div>
+                            {/* F6: Template chips */}
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-[10px] text-[#a8a49d] font-semibold uppercase tracking-wider mr-1 flex-shrink-0">Templates:</span>
+                              {OUTREACH_TEMPLATES.map((template) => (
+                                <button
+                                  key={template.label}
+                                  type="button"
+                                  onClick={() => setEditedOutreach(prev => ({
+                                    ...prev,
+                                    [candidate.email]: template.generate(
+                                      candidate.name || 'there',
+                                      job?.title || 'this position'
+                                    )
+                                  }))}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-[#e4e1da] bg-[#f7f6f3] text-[10px] font-semibold text-[#6b7063] hover:bg-[#e8f2ee] hover:border-[#2d6a55] hover:text-[#2d6a55] transition-colors cursor-pointer"
+                                >
+                                  <span>{template.emoji}</span>
+                                  {template.label}
+                                </button>
+                              ))}
+                            </div>
+                            <textarea
+                              value={draftOutreach}
+                              onChange={(e) => setEditedOutreach(prev => ({ ...prev, [candidate.email]: e.target.value }))}
+                              placeholder="Personalized outreach pitch sent or to be sent to candidate..."
+                              rows={5}
+                              className="w-full px-3 py-2 border border-[#e4e1da] rounded-lg text-xs text-[#1c1c1a] focus:outline-none focus:border-[#2d6a55] resize-none"
+                            />
+
+                            <div className="text-right">
+                              <button
+                                onClick={saveOutreachField}
+                                disabled={isSavingThis}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#2d6a55] text-white rounded-lg hover:bg-[#245747] text-xs font-medium transition-colors disabled:opacity-50 cursor-pointer"
+                              >
+                                {isSavingThis ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                                Save Outreach
+                              </button>
+                            </div>
+                            {candidate.outreachHistory?.length ? (
+                              <div className="border-t border-[#e4e1da] pt-3 space-y-2">
+                                <p className="text-[10px] text-[#a8a49d] uppercase tracking-wider font-semibold">Message History</p>
+                                {candidate.outreachHistory.slice(0, 3).map(item => (
+                                  <div key={item.id} className="rounded-lg bg-[#f7f6f3] border border-[#e4e1da] p-2">
+                                    <div className="flex items-center justify-between gap-2 mb-1">
+                                      <span className={`text-[10px] font-semibold uppercase ${item.status === 'sent' ? 'text-[#2d6a55]' : item.status === 'failed' ? 'text-[#b91c1c]' : 'text-[#8a5a14]'}`}>{item.status}</span>
+                                      <span className="text-[10px] text-[#a8a49d]">{new Date(item.sent_at).toLocaleString()}</span>
+                                    </div>
+                                    <p className="text-[11px] text-[#6b7063] whitespace-pre-wrap line-clamp-3">{item.message}</p>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : null}
+                          </div>
+                          {/* F2: Candidate-visible HR feedback */}
+                          <div className="bg-white border border-[#e4e1da] rounded-xl p-4 shadow-sm space-y-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs tracking-wider uppercase text-[#a8a49d] font-semibold">HR Notes & Feedback</span>
+                              <span className="text-[10px] text-[#3730a3] font-semibold">Candidate will be emailed</span>
+                            </div>
+                            <textarea
+                              value={draftFeedback}
+                              onChange={(e) => setEditedFeedback(prev => ({ ...prev, [candidate.email]: e.target.value }))}
+                              placeholder="Add candidate-facing feedback or interview impressions. Saving this will notify the candidate by email."
+                              rows={5}
+                              className="w-full px-3 py-2 border border-[#e4e1da] rounded-lg text-xs text-[#1c1c1a] focus:outline-none focus:border-[#2d6a55] resize-none"
+                            />
+                            <div className="text-right">
+                              <button
+                                onClick={saveFeedbackField}
+                                disabled={isSavingThis}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#3730a3] text-white rounded-lg hover:bg-[#312e81] text-xs font-medium transition-colors disabled:opacity-50 cursor-pointer"
+                              >
+                                {isSavingThis ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                                Save Notes & Feedback
+                              </button>
+                            </div>
+                            {candidate.hrFeedback ? (
+                              <div className="border-t border-[#e4e1da] pt-3 space-y-2">
+                                <p className="text-[10px] text-[#a8a49d] uppercase tracking-wider font-semibold">Active Candidate Feedback</p>
+                                <div className="rounded-lg bg-[#f5f3ff] border border-[#e0dbff] p-3 space-y-2">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#3730a3]">Saved Feedback Note</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => setEditedFeedback(prev => ({ ...prev, [candidate.email]: candidate.hrFeedback || '' }))}
+                                      className="text-[10px] font-semibold text-[#3730a3] hover:underline cursor-pointer bg-transparent border-none p-0"
+                                    >
+                                      Edit Note
+                                    </button>
+                                  </div>
+                                  <p className="text-xs text-[#1e1b4b] whitespace-pre-wrap leading-relaxed">{candidate.hrFeedback}</p>
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>                        </div>
+
+                        {/* Profile */}
+                        <div className="bg-white border border-[#e4e1da] rounded-xl p-4 shadow-sm">
+                          <p className="text-xs tracking-wider uppercase text-[#a8a49d] mb-3 font-semibold">Profile</p>
+                          <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div>
+                              <span className="text-xs text-[#a8a49d]">Email</span>
+                              <p className="text-[#1c1c1a] mt-0.5 font-medium">{displayEmail}</p>
+                            </div>
+                            <div>
+                              <span className="text-xs text-[#a8a49d]">Location</span>
+                              <p className="text-[#1c1c1a] mt-0.5 font-medium">{candidate.location || 'Not extracted'}</p>
+                            </div>
+                            <div>
+                              <span className="text-xs text-[#a8a49d]">Age</span>
+                              <p className="text-[#1c1c1a] mt-0.5 font-medium">{candidate.age || 'Not extracted'}</p>
+                            </div>
+                            <div>
+                              <span className="text-xs text-[#a8a49d]">Phone</span>
+                              <p className="text-[#1c1c1a] mt-0.5 font-medium">{candidate.phone || 'Not extracted'}</p>
+                            </div>
+                            <div>
+                              <span className="text-xs text-[#a8a49d]">Address</span>
+                              <p className="text-[#1c1c1a] mt-0.5 font-medium">{candidate.address || 'Not extracted'}</p>
+                            </div>
+                            <div>
+                              <span className="text-xs text-[#a8a49d]">Came From</span>
+                              <p className="text-[#1c1c1a] mt-0.5 font-medium">{candidate.cameFrom || 'Not extracted'}</p>
+                            </div>
+                            <div>
+                              <span className="text-xs text-[#a8a49d]">Qualification</span>
+                              <p className="text-[#1c1c1a] mt-0.5 font-medium">{candidate.qualification || 'Not extracted'}</p>
+                            </div>
+                            <div>
+                              <span className="text-xs text-[#a8a49d]">Grade and Results</span>
+                              <p className="text-[#1c1c1a] mt-0.5 font-medium">{candidate.gradeResults || 'Not extracted'}</p>
+                            </div>
+                            <div>
+                              <span className="text-xs text-[#a8a49d]">Resume File</span>
+                              <p className="text-[#1c1c1a] mt-0.5 font-medium">{candidate.resumeFilename || 'No PDF stored'}</p>
+                            </div>
+                             <div>
+                               <span className="text-xs text-[#a8a49d]">University Ranking</span>
+                               {(() => {
+                                 const rankedSchools = candidate.qsRanking?.filter((r: any) => r.rank !== null && r.rank !== undefined) || [];
+                                 if (rankedSchools.length === 0) {
+                                   return <p className="text-[#a8a49d] mt-0.5 font-medium">Ranking Not Available</p>;
+                                 }
+                                 const bestSchool = rankedSchools.reduce((prev: any, current: any) => (prev.rank < current.rank) ? prev : current);
+                                 return (
+                                   <p className="text-[#2d6a55] mt-0.5 font-semibold">
+                                     QS #{bestSchool.rank} ({bestSchool.school})
+                                   </p>
+                                 );
+                               })()}
+                             </div>
+                          </div>
+                          {candidate.awards?.length ? (
+                            <div className="mt-3 pt-3 border-t border-[#e4e1da]">
+                              <span className="text-xs text-[#a8a49d]">Awards</span>
+                              <div className="flex flex-wrap gap-1.5 mt-2">
+                                {candidate.awards.map((award, idx) => (
+                                  <span key={`${award}-${idx}`} className="px-2 py-0.5 bg-[#f0ede8] rounded-full text-xs text-[#6b7063]">
+                                    {award}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
+                          {candidate.workExperience && (
+                            <div className="mt-3 pt-3 border-t border-[#e4e1da]">
+                              <span className="text-xs text-[#a8a49d]">Work Experience</span>
+                              <p className="text-sm text-[#6b7063] mt-1 leading-relaxed">{candidate.workExperience}</p>
+                            </div>
+                          )}
+                          {candidate.skills?.length ? (
+                            <div className="mt-3 pt-3 border-t border-[#e4e1da]">
+                              <span className="text-xs text-[#a8a49d]">Resume Agent Skills</span>
+                              <div className="flex flex-wrap gap-1.5 mt-2">
+                                {candidate.skills.slice(0, 10).map((skill, idx) => (
+                                  <span key={`${skill}-${idx}`} className="px-2 py-0.5 bg-[#f0ede8] rounded-full text-xs text-[#6b7063]">
+                                    {skill}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
+                          {candidate.about && (
+                            <div className="mt-3 pt-3 border-t border-[#e4e1da]">
+                              <p className="text-sm text-[#6b7063] leading-relaxed">{neutralizeText(candidate.about)}</p>
+                            </div>
+                          )}
+                          {candidate.resumeSummary && (
+                            <div className="mt-3 pt-3 border-t border-[#e4e1da]">
+                              <span className="text-xs text-[#a8a49d]">Resume Summary</span>
+                              <p className="text-sm text-[#6b7063] mt-1 leading-relaxed">{neutralizeText(candidate.resumeSummary)}</p>
+                            </div>
+                          )}
+                        </div>
+
+                        {(candidate.resumeUrl || candidate.resumeText) && (
+                          <details className="group bg-white border border-[#e4e1da] rounded-xl overflow-hidden shadow-sm">
+                            <summary className="cursor-pointer px-4 py-3 hover:bg-[#f7f6f3] transition-colors flex items-center justify-between font-medium text-sm text-[#1c1c1a]">
+                              <span className="text-sm text-[#6b7063] group-hover:text-[#1c1c1a] transition-colors">
+                                View Resume {candidate.resumeFilename ? `- ${candidate.resumeFilename}` : ''}
+                              </span>
+                              <ChevronDown className="w-4 h-4 text-[#a8a49d] transition-transform group-open:rotate-180" />
+                            </summary>
+                            <div className="px-4 pb-4 pt-2 border-t border-[#e4e1da]">
+                              {candidate.resumeUrl && (
+                                <div className="mb-3">
+                                  <PdfResumeViewer url={`${API_ORIGIN}${candidate.resumeUrl}`} filename={candidate.resumeFilename} />
+                                </div>
+                              )}
+                              {candidate.resumeText && (
+                                <pre className="max-h-72 overflow-auto whitespace-pre-wrap text-xs text-[#6b7063] leading-relaxed font-sans">
+                                  {candidate.resumeText}
+                                </pre>
+                              )}
+                            </div>
+                          </details>
+                        )}
+
+                        {/* Experience */}
+                        {candidate.experiences?.length > 0 && (
+                          <div className="bg-white border border-[#e4e1da] rounded-xl p-4 shadow-sm">
+                            <p className="text-xs tracking-wider uppercase text-[#a8a49d] mb-3 font-semibold">Experience</p>
+                            <div className="space-y-3">
+                              {candidate.experiences.map((exp, idx) => (
+                                <div key={idx} className="flex gap-3">
+                                  <div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-[#2d6a55] flex-shrink-0" />
+                                  <div>
+                                    <p className="text-sm text-[#1c1c1a] font-semibold">{exp.title}</p>
+                                    <p className="text-xs text-[#6b7063] font-medium">{neutralizeText(exp.company)}</p>
+                                    <p className="text-xs text-[#a8a49d]">{exp.duration}</p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Education */}
+                        {candidate.education?.length > 0 && (
+                          <div className="bg-white border border-[#e4e1da] rounded-xl p-4 shadow-sm text-left">
+                            <p className="text-xs tracking-wider uppercase text-[#a8a49d] mb-3 font-semibold">Education</p>
+                            <div className="space-y-2">
+                              {candidate.education.map((edu, idx) => {
+                                const matchedIndicator = candidate.prestigeAnalysis?.prestige_indicators?.find(
+                                  (ind: any) => ind.type === 'university' && 
+                                  (ind.original.toLowerCase() === edu.school.toLowerCase() || 
+                                   edu.school.toLowerCase().includes(ind.original.toLowerCase()) || 
+                                   ind.original.toLowerCase().includes(edu.school.toLowerCase()))
+                                );
+                                const qsRankingEntry = candidate.qsRanking?.find(
+                                  (r: any) => r.school.toLowerCase() === edu.school.toLowerCase() ||
+                                              edu.school.toLowerCase().includes(r.school.toLowerCase()) ||
+                                              r.school.toLowerCase().includes(edu.school.toLowerCase())
+                                );
+                                const qsRank = matchedIndicator?.qs_rank || qsRankingEntry?.rank;
+
+                                let badgeText = "";
+                                if (qsRank) {
+                                  if (qsRank <= 100) {
+                                    badgeText = "Top 100 institution";
+                                  } else if (qsRank <= 500) {
+                                    badgeText = "Ranked institution";
+                                  } else {
+                                    badgeText = "Ranking found";
+                                  }
+                                }
+                                const badgeLabel = matchedIndicator?.qs_badge || badgeText;
+
+                                return (
+                                  <div key={idx}>
+                                    <p className="text-sm text-[#1c1c1a] font-semibold flex items-center flex-wrap gap-2">
+                                      <span>{neutralizeText(edu.school)}</span>
+                                      {qsRank ? (
+                                        <span className="inline-flex items-center gap-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#e8f2ee] text-[#2d6a55] flex-wrap">
+                                          <span>QS Rank: #{qsRank}</span>
+                                          {badgeLabel && (
+                                            <span className="bg-[#2d6a55] text-white px-1 py-0.2 rounded-[3px] text-[8px] font-extrabold uppercase tracking-wide">
+                                              {badgeLabel}
+                                            </span>
+                                          )}
+                                        </span>
+                                      ) : (
+                                        <span className="text-[#a8a49d] text-[10px] font-normal">
+                                          (Ranking Not Available)
+                                        </span>
+                                      )}
+                                    </p>
+                                    <p className="text-xs text-[#6b7063]">{edu.degree}</p>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* AI Committee Debate */}
+                        <div>
+                          <p className="text-xs tracking-wider uppercase text-[#a8a49d] mb-3 font-semibold">AI Committee Analysis</p>
+                          <div className="grid md:grid-cols-2 gap-3">
+                            <div className="bg-[#f0f9f4] border border-[#c8e6d8] rounded-xl p-4 shadow-sm">
+                              <div className="flex items-center gap-2 mb-3">
+                                <TrendingUp className="w-4 h-4 text-[#2d6a55]" />
+                                <p className="text-xs text-[#2d6a55] uppercase tracking-wider font-semibold">Talent Advocate</p>
+                              </div>
+                              {candidate.advocatePros?.length ? (
+                                <ul className="space-y-2">
+                                  {candidate.advocatePros.map((pro, idx) => (
+                                    <li key={idx} className="text-xs text-[#3d5a4a] flex items-start gap-2 leading-relaxed font-medium">
+                                      <CheckCircle2 className="w-3.5 h-3.5 text-[#2d6a55] flex-shrink-0 mt-0.5" />
+                                      <span>{pro}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : <p className="text-xs text-[#6b7063]">Analysis pending...</p>}
+                            </div>
+
+                            <div className="bg-[#fdf8ee] border border-[#e8d8a0] rounded-xl p-4 shadow-sm">
+                              <div className="flex items-center gap-2 mb-3">
+                                <TrendingDown className="w-4 h-4 text-[#c9a84c]" />
+                                <p className="text-xs text-[#c9a84c] uppercase tracking-wider font-semibold">Critical Recruiter</p>
+                              </div>
+                              {candidate.recruiterCons?.length ? (
+                                <ul className="space-y-2">
+                                  {candidate.recruiterCons.map((con, idx) => (
+                                    <li key={idx} className="text-xs text-[#5a4d2a] flex items-start gap-2 leading-relaxed font-medium">
+                                      <AlertCircle className="w-3.5 h-3.5 text-[#c9a84c] flex-shrink-0 mt-0.5" />
+                                      <span>{con}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : <p className="text-xs text-[#6b7063]">Analysis pending...</p>}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Screening Results / Interview Session */}
+                        {view !== 'overview' && ((['completed', 'screening', 'hired', 'interview_scheduled'].includes(candidate.status)) || isPendingInterview(candidate.status, candidate.answers)) && (
+                          <div className="bg-[#f7f6f3] border border-[#e4e1da] rounded-xl p-4 shadow-sm text-left">
+                            {isPendingInterview(candidate.status, candidate.answers) ? (
+                              <div className="text-center py-6 bg-white border border-[#e4e1da] rounded-xl">
+                                <Calendar className="w-8 h-8 text-[#a8a49d] mx-auto mb-2" />
+                                <p className="text-sm font-semibold text-[#1c1c1a]">Interview Pending</p>
+                                <p className="text-xs text-[#6b7063] mt-1 max-w-sm mx-auto">
+                                  This candidate has not yet completed their warm-up sandbox / interview questions.
+                                </p>
+                              </div>
+                            ) : (
+                              <>
+                                <div className="flex items-center justify-between gap-4">
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-9 h-9 bg-[#e8f2ee] rounded-xl flex items-center justify-center">
+                                      <CheckCircle2 className="w-4.5 h-4.5 text-[#2d6a55]" style={{ width: '18px', height: '18px' }} />
+                                    </div>
+                                    <div>
+                                      <p className="text-sm text-[#1c1c1a] font-semibold">Interview Session</p>
+                                      <p className="text-xs text-[#6b7063]">{candidate.evaluation?.position_fit_verdict || 'Answers evaluated against the selected position requirements'}</p>
+                                    </div>
+                                  </div>
+                                  {candidate.screeningScore !== undefined && (
+                                    <div className="text-right">
+                                      <div className="text-2xl text-[#2d6a55] font-semibold">{candidate.screeningScore}</div>
+                                      <div className="text-xs text-[#6b7063]">/ 100</div>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {candidate.evaluation?.role_alignment_summary && (
+                                  <p className="text-xs text-[#6b7063] leading-relaxed mt-3 border-t border-[#e4e1da] pt-3">
+                                    {candidate.evaluation.role_alignment_summary}
+                                  </p>
+                                )}
+                                {candidate.evaluation?.score_breakdown && (
+                                  <div className="grid sm:grid-cols-5 gap-2 mt-3">
+                                    {[
+                                      ['Role', candidate.evaluation.score_breakdown.role_requirement_alignment, 35],
+                                      ['Depth', candidate.evaluation.score_breakdown.technical_correctness_depth, 25],
+                                      ['Evidence', candidate.evaluation.score_breakdown.evidence_specificity, 20],
+                                      ['Impact', candidate.evaluation.score_breakdown.position_impact, 10],
+                                      ['Clarity', candidate.evaluation.score_breakdown.communication_clarity, 10]
+                                    ].map(([label, value, max]) => (
+                                      <div key={label} className="bg-white border border-[#e4e1da] rounded-lg p-2">
+                                        <p className="text-[10px] text-[#a8a49d] uppercase tracking-wider font-semibold inline-flex items-center gap-1">
+                                          <span>{label}</span>
+                                          <KnowledgeTooltip label={`Explain ${label}`}>
+                                            {scoreBreakdownHelp[String(label)]}
+                                          </KnowledgeTooltip>
+                                        </p>
+                                        <p className="text-sm text-[#1c1c1a] font-semibold mt-0.5">{value || 0}/{max}</p>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                                {questionFeedbackItems.length ? (
+                                  <div className="mt-4 pt-4 border-t border-[#e4e1da] space-y-4">
+                                    <p className="text-xs tracking-wider uppercase text-[#a8a49d] font-semibold">Interview Session Q&A</p>
+                                    <div className="space-y-4 pl-2 border-l border-[#e4e1da]">
+                                      {questionFeedbackItems.map((item: any, critiqueIndex: number) => {
+                                        const answer = item.candidate_answer || candidate.answers?.[critiqueIndex] || item.candidate_answer_excerpt || '';
+                                        return (
+                                          <div key={`${candidate.email}-critique-${critiqueIndex}`} className="space-y-2 relative pl-4 before:absolute before:left-0 before:top-3.5 before:w-3 before:h-[1px] before:bg-[#e4e1da]">
+                                            <div className="bg-white border border-[#e4e1da] rounded-xl p-4 shadow-sm space-y-3">
+                                              <div className="flex items-center justify-between border-b border-[#e4e1da] pb-2">
+                                                <span className="text-xs font-bold text-[#2d6a55]">
+                                                  Question {critiqueIndex + 1}
+                                                </span>
+                                                {item.per_answer_score !== undefined && (
+                                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-[#e8f2ee] text-[#2d6a55] border border-[#c8e6d8] inline-flex items-center gap-1">
+                                                    <span>Score: {item.per_answer_score}/100</span>
+                                                    <KnowledgeTooltip label="Explain per-question score">
+                                                      Per-answer score based on relevance, correctness, evidence, impact, and communication quality for this exact question.
+                                                    </KnowledgeTooltip>
+                                                  </span>
+                                                )}
+                                              </div>
+
+                                              <div className="space-y-1">
+                                                <p className="text-[10px] font-semibold uppercase text-[#a8a49d]">Question</p>
+                                                <p className="text-xs text-[#1c1c1a] font-medium italic">"{cleanQuestionText(item.question || candidate.customQuestions?.[critiqueIndex] || `Screening question ${critiqueIndex + 1}`, critiqueIndex)}"</p>
+                                                {item.requirement_focus && (
+                                                  <p className="text-[9px] text-[#6b7063]">Requirement focus: {item.requirement_focus}</p>
+                                                )}
+                                              </div>
+
+                                              <div className="bg-[#f7f6f3] rounded-lg p-3 border border-[#e4e1da]/60">
+                                                <p className="text-[10px] font-semibold uppercase text-[#a8a49d] mb-1">Candidate Answer</p>
+                                                <p className="text-xs text-[#52574e] leading-relaxed whitespace-pre-wrap">
+                                                  {answer || 'No answer submitted'}
+                                                </p>
+                                              </div>
+
+                                              <div className="bg-[#f0f7f4] rounded-lg p-3 border border-[#c8e6d8]">
+                                                <p className="text-[10px] font-semibold uppercase text-[#2d6a55] mb-1 inline-flex items-center gap-1.5">
+                                                  <span>AI Feedback</span>
+                                                  <KnowledgeTooltip label="Explain AI feedback">
+                                                    The agent's interviewer-style assessment of what the answer proves, what is missing, and how confident HR should be.
+                                                  </KnowledgeTooltip>
+                                                </p>
+                                                <p className="text-xs text-[#245747] leading-relaxed">
+                                                  {alignScoreMentions(item.critique || item.feedback || 'Agent feedback has not been generated yet.', item.per_answer_score)}
+                                                </p>
+                                              </div>
+
+                                              {item.strengths?.length ? (
+                                                <div className="mt-2 pl-1">
+                                                  <p className="text-[10px] text-[#2d6a55] uppercase tracking-wider font-semibold mb-1 inline-flex items-center gap-1.5">
+                                                    <span>Evidence supporting the score</span>
+                                                    <KnowledgeTooltip label="Explain evidence supporting the score">
+                                                      Specific strengths found in the candidate's answer that justify credit in the screening score.
+                                                    </KnowledgeTooltip>
+                                                  </p>
+                                                  <ul className="space-y-0.5">
+                                                    {item.strengths.map((strength: string, strengthIndex: number) => (
+                                                      <li key={strengthIndex} className="text-xs text-[#3d5a4a] leading-relaxed flex items-start gap-1.5">
+                                                        <CheckCircle2 className="w-3 h-3 text-[#2d6a55] flex-shrink-0 mt-0.5" />
+                                                        <span>{strength}</span>
+                                                      </li>
+                                                    ))}
+                                                  </ul>
+                                                </div>
+                                              ) : null}
+                                              {item.weaknesses?.length ? (
+                                                <div className="mt-2 pl-1">
+                                                  <p className="text-[10px] text-[#c25a2a] uppercase tracking-wider font-semibold mb-1 inline-flex items-center gap-1.5">
+                                                    <span>Risks or missing proof</span>
+                                                    <KnowledgeTooltip label="Explain risks or missing proof">
+                                                      Gaps, unsupported claims, weak details, or answer quality issues that reduce confidence in the candidate's response.
+                                                    </KnowledgeTooltip>
+                                                  </p>
+                                                  <ul className="space-y-0.5">
+                                                    {item.weaknesses.map((weakness: string, weaknessIndex: number) => (
+                                                      <li key={weaknessIndex} className="text-xs text-[#6b7063] leading-relaxed flex items-start gap-1.5">
+                                                        <AlertCircle className="w-3 h-3 text-[#c25a2a] flex-shrink-0 mt-0.5" />
+                                                        <span>{weakness}</span>
+                                                      </li>
+                                                    ))}
+                                                  </ul>
+                                                </div>
+                                              ) : null}
+                                              {(item.suggested_improvement || item.hiring_manager_note) && (
+                                                <div className="mt-2 rounded-lg border border-[#e4e1da] bg-[#f7f6f3] p-2.5">
+                                                  {item.hiring_manager_note && (
+                                                    <p className="text-xs text-[#1c1c1a] leading-relaxed">
+                                                      <span className="font-semibold text-[10px] inline-flex items-center gap-1.5">
+                                                        <span>Hiring manager note:</span>
+                                                        <KnowledgeTooltip label="Explain hiring manager note">
+                                                          A concise summary HR can use when deciding whether to advance, reject, or investigate further.
+                                                        </KnowledgeTooltip>
+                                                      </span> {item.hiring_manager_note}
+                                                    </p>
+                                                  )}
+                                                  {item.suggested_improvement && (
+                                                    <p className="text-xs text-[#6b7063] leading-relaxed mt-1">
+                                                      <span className="font-semibold text-[#1c1c1a] text-[10px] inline-flex items-center gap-1.5">
+                                                        <span>Suggested probe:</span>
+                                                        <KnowledgeTooltip label="Explain suggested probe">
+                                                          A follow-up interview question that helps HR verify the candidate's weak or uncertain evidence.
+                                                        </KnowledgeTooltip>
+                                                      </span> {item.suggested_improvement}
+                                                    </p>
+                                                  )}
+                                                </div>
+                                              )}
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                ) : null}
+                              </>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Hiring Completion Info */}
+                        {candidate.status === 'hired' && (
+                          <div className="bg-[#e8f2ee] border border-[#c8e6d8] rounded-xl p-4 shadow-sm">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Award className="w-4 h-4 text-[#245747]" />
+                              <p className="text-xs text-[#245747] uppercase tracking-wider font-semibold">Candidate Hired</p>
+                            </div>
+                            <p className="text-xs text-[#3d5a4a] leading-relaxed">
+                              Recruitment has been finalized for this candidate and they are now separated from the active and rejected pipelines.
+                            </p>
+                            {candidate.hiredAt && <p className="text-xs text-[#6b7063] mt-1">Completed at: {new Date(candidate.hiredAt).toLocaleString()}</p>}
+                          </div>
+                        )}
+
+                        {/* Interview Slot Details */}
+                        {candidate.status === 'interview_scheduled' && candidate.interviewSlot && (
+                          <div className="bg-[#eef2ff] border border-[#c7d2fe] rounded-xl p-4 shadow-sm">
+                            <div className="flex items-center gap-2 mb-3">
+                              <Calendar className="w-4 h-4 text-[#3730a3]" />
+                              <p className="text-xs text-[#3730a3] uppercase tracking-wider font-semibold">Interview Scheduled</p>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 text-xs">
+                              <div><span className="text-[#6b7280]">Date</span><p className="text-[#1c1c1a] font-medium mt-0.5">{candidate.interviewSlot.date}</p></div>
+                              <div><span className="text-[#6b7280]">Time</span><p className="text-[#1c1c1a] font-medium mt-0.5">{candidate.interviewSlot.time}</p></div>
+                              <div><span className="text-[#6b7280]">Location</span><p className="text-[#1c1c1a] font-medium mt-0.5">{candidate.interviewSlot.location}</p></div>
+                              {candidate.interviewSlot.notes && <div className="col-span-2 mt-1.5"><span className="text-[#6b7280]">Notes</span><p className="text-[#1c1c1a] font-medium mt-0.5 leading-relaxed">{candidate.interviewSlot.notes}</p></div>}
+                            </div>
+                            <button
+                              onClick={() => {
+                                setScheduleTarget(candidate);
+                                setScheduleDate(candidate.interviewSlot?.date || '');
+                                setScheduleTime(candidate.interviewSlot?.time || '');
+                                setScheduleLocation(candidate.interviewSlot?.location || 'To be confirmed');
+                                setScheduleNotes(candidate.interviewSlot?.notes || '');
+                              }}
+                              className="mt-3 inline-flex items-center gap-1.5 px-3 py-2 bg-white border border-[#c7d2fe] text-[#3730a3] rounded-lg hover:bg-[#e0e7ff] text-xs font-medium transition-colors"
+                            >
+                              <Calendar className="w-3.5 h-3.5" />
+                              Edit Interview Time
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Rejection Info */}
+                        {candidate.status === 'rejected' && (
+                          <div className="bg-[#fdf2f2] border border-[#f5c2c2] rounded-xl p-4 shadow-sm">
+                            <div className="flex items-center gap-2 mb-2">
+                              <XCircle className="w-4 h-4 text-[#b91c1c]" />
+                              <p className="text-xs text-[#b91c1c] uppercase tracking-wider font-semibold">Candidate Rejected</p>
+                            </div>
+                            {candidate.hrFeedback && <p className="text-xs text-[#6b7063] mt-1"><span className="font-semibold text-[#1c1c1a]">HR Notes:</span> {candidate.hrFeedback}</p>}
+                            {candidate.rejectionMessage && <p className="text-xs text-[#6b7063] mt-1"><span className="font-semibold text-[#1c1c1a]">Sent apology email:</span> "{candidate.rejectionMessage}"</p>}
+                            {candidate.rejectedAt && <p className="text-xs text-[#a8a49d] mt-1">Rejected at: {new Date(candidate.rejectedAt).toLocaleString()}</p>}
+                          </div>
+                        )}
+                      </div>
+                    </Accordion.Content>
+                  </Accordion.Item>
+                </motion.div>
+              );
+            })}
+          </Accordion.Root>
+        )}
+
+        {/* Pagination Footer Controls */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between border-t border-[#e4e1da] pt-5 mt-5">
+            <span className="text-xs text-[#6b7063]">
+              Showing {Math.min(totalFiltered, (currentPage - 1) * pageSize + 1)} to {Math.min(totalFiltered, currentPage * pageSize)} of {totalFiltered} candidates
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                className="px-3 py-1.5 border border-[#e4e1da] bg-white rounded-lg text-xs font-semibold text-[#6b7063] hover:bg-[#f7f6f3] disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+              >
+                Previous
+              </button>
+              {visiblePages.map((page, index) => (
+                <span key={page} className="inline-flex items-center gap-1.5">
+                  {index > 0 && page - visiblePages[index - 1] > 1 && <span className="px-1 text-xs text-[#a8a49d]">...</span>}
+                  <button
+                    onClick={() => setCurrentPage(page)}
+                    className={`min-w-8 px-2.5 py-1.5 border rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                      page === currentPage
+                        ? 'border-[#2d6a55] bg-[#e8f2ee] text-[#2d6a55]'
+                        : 'border-[#e4e1da] bg-white text-[#6b7063] hover:bg-[#f7f6f3]'
+                    }`}
+                  >
+                    {page}
+                  </button>
+                </span>
+              ))}
+              <button
+                disabled={currentPage === totalPages}
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                className="px-3 py-1.5 border border-[#e4e1da] bg-white rounded-lg text-xs font-semibold text-[#6b7063] hover:bg-[#f7f6f3] disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
+      </motion.div>
+
+      {/* Reject Candidate Modal */}
+      {rejectTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md border border-[#e4e1da]">
+            <div className="flex items-center justify-between p-5 border-b border-[#e4e1da]">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-[#fdf2f2] rounded-lg flex items-center justify-center">
+                  <XCircle className="w-4 h-4 text-[#b91c1c]" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-[#1c1c1a]">Reject Candidate</h3>
+                  <p className="text-xs text-[#6b7063]">{rejectTarget.name}</p>
+                </div>
+              </div>
+              <button onClick={() => setRejectTarget(null)} className="text-[#a8a49d] hover:text-[#1c1c1a] transition-colors">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs text-[#a8a49d] mb-1 font-medium font-semibold">HR Feedback / Internal Notes</label>
+                <textarea
+                  value={rejectFeedback}
+                  onChange={(e) => setRejectFeedback(e.target.value)}
+                  placeholder="Optional internal notes for the hiring team..."
+                  className="w-full px-3 py-2 border border-[#e4e1da] rounded-lg text-sm text-[#1c1c1a] focus:outline-none focus:border-[#2d6a55] resize-none"
+                  rows={2}
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-[#a8a49d] mb-1 font-medium font-semibold">Rejection Message (sent to candidate)</label>
+                <textarea
+                  value={rejectMessage}
+                  onChange={(e) => setRejectMessage(e.target.value)}
+                  className="w-full px-3 py-2 border border-[#e4e1da] rounded-lg text-sm text-[#1c1c1a] focus:outline-none focus:border-[#2d6a55] resize-none"
+                  rows={4}
+                />
+              </div>
+            </div>
+            <div className="flex gap-2 p-5 pt-0">
+              <button
+                onClick={() => setRejectTarget(null)}
+                className="flex-1 px-4 py-2.5 bg-white border border-[#e4e1da] text-[#6b7063] rounded-lg hover:bg-[#f7f6f3] text-sm font-medium transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  const email = rejectTarget.managementEmail || rejectTarget.email;
+                  runAction(email, () => onReject(email, rejectTarget.jobId, rejectFeedback, rejectMessage));
+                  setRejectTarget(null);
+                }}
+                className="flex-1 px-4 py-2.5 bg-[#b91c1c] text-white rounded-lg hover:bg-[#991b1b] text-sm font-medium transition-colors"
+              >
+                Confirm Rejection
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Schedule Interview Modal */}
+      {scheduleTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md border border-[#e4e1da]">
+            <div className="flex items-center justify-between p-5 border-b border-[#e4e1da]">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-[#eef2ff] rounded-lg flex items-center justify-center">
+                  <Calendar className="w-4 h-4 text-[#3730a3]" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-[#1c1c1a]">Schedule Interview</h3>
+                  <p className="text-xs text-[#6b7063]">{scheduleTarget.name}</p>
+                </div>
+              </div>
+              <button onClick={() => setScheduleTarget(null)} className="text-[#a8a49d] hover:text-[#1c1c1a] transition-colors">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-[#a8a49d] mb-1 font-medium font-semibold">Date *</label>
+                  <input
+                    type="date"
+                    value={scheduleDate}
+                    onChange={(e) => setScheduleDate(e.target.value)}
+                    className="w-full px-3 py-2 border border-[#e4e1da] rounded-lg text-sm text-[#1c1c1a] focus:outline-none focus:border-[#3730a3]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-[#a8a49d] mb-1 font-medium font-semibold">Time *</label>
+                  <input
+                    type="time"
+                    value={scheduleTime}
+                    onChange={(e) => setScheduleTime(e.target.value)}
+                    className="w-full px-3 py-2 border border-[#e4e1da] rounded-lg text-sm text-[#1c1c1a] focus:outline-none focus:border-[#3730a3]"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs text-[#a8a49d] mb-1 font-medium font-semibold">Location</label>
+                <input
+                  value={scheduleLocation}
+                  onChange={(e) => setScheduleLocation(e.target.value)}
+                  placeholder="Office address, Zoom link, etc."
+                  className="w-full px-3 py-2 border border-[#e4e1da] rounded-lg text-sm text-[#1c1c1a] focus:outline-none focus:border-[#3730a3]"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-[#a8a49d] mb-1 font-medium font-semibold">Notes</label>
+                <textarea
+                  value={scheduleNotes}
+                  onChange={(e) => setScheduleNotes(e.target.value)}
+                  placeholder="Bring your portfolio, virtual meeting instructions, etc."
+                  className="w-full px-3 py-2 border border-[#e4e1da] rounded-lg text-sm text-[#1c1c1a] focus:outline-none focus:border-[#3730a3] resize-none"
+                  rows={2}
+                />
+              </div>
+            </div>
+            <div className="flex gap-2 p-5 pt-0">
+              <button
+                onClick={() => setScheduleTarget(null)}
+                className="flex-1 px-4 py-2.5 bg-white border border-[#e4e1da] text-[#6b7063] rounded-lg hover:bg-[#f7f6f3] text-sm font-medium transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={isSchedulingInterview || !scheduleDate || !scheduleTime}
+                onClick={async () => {
+                  const email = scheduleTarget.managementEmail || scheduleTarget.email;
+                  setIsSchedulingInterview(true);
+                  try {
+                    const result: any = await runAction(email, () => onScheduleInterview(email, scheduleTarget.jobId, scheduleDate, scheduleTime, scheduleLocation, scheduleNotes));
+                    if (result) {
+                      toast.success(result.interview_email_sent
+                        ? `Interview scheduled and email sent to ${scheduleTarget.name}.`
+                        : result.smtp_configured === false
+                          ? `Interview scheduled for ${scheduleTarget.name}. SMTP is not configured, so no email was sent.`
+                          : `Interview scheduled for ${scheduleTarget.name}. Email delivery was not confirmed.`);
+                      setScheduleTarget(null);
+                    }
+                  } finally {
+                    setIsSchedulingInterview(false);
+                  }
+                }}
+                className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-[#3730a3] text-white rounded-lg hover:bg-[#312e81] disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium transition-colors"
+              >
+                {isSchedulingInterview && <Loader2 className="w-4 h-4 animate-spin" />}
+                {isSchedulingInterview ? 'Confirming...' : 'Confirm Interview'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Trajectory Candidate Profile Modal */}
+      {selectedTrajectoryCandidate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl border border-[#e4e1da] max-h-[90vh] overflow-hidden">
+            <div className="flex items-start justify-between gap-4 p-5 border-b border-[#e4e1da] bg-[#f7f6f3]">
+              <div className="flex items-start gap-4 min-w-0">
+                {selectedTrajectoryCandidate.profilePictureUrl && !brokenImages[selectedTrajectoryCandidate.email] ? (
+                  <img
+                    src={`${API_ORIGIN}${selectedTrajectoryCandidate.profilePictureUrl}`}
+                    alt={getDisplayName(selectedTrajectoryCandidate)}
+                    onError={() => {
+                      setBrokenImages(prev => ({ ...prev, [selectedTrajectoryCandidate.email]: true }));
+                    }}
+                    className="w-14 h-14 rounded-xl object-cover border border-[#e4e1da] flex-shrink-0"
+                  />
+                ) : (
+                  <div className="w-14 h-14 bg-[#e8f2ee] rounded-xl flex items-center justify-center text-[#2d6a55] font-semibold text-xl flex-shrink-0">
+                    {getDisplayName(selectedTrajectoryCandidate).charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <p className="text-xs tracking-wider uppercase text-[#2d6a55] font-semibold">Trajectory Candidate Profile</p>
+                  <h3 className="text-lg text-[#1c1c1a] font-semibold truncate">{getDisplayName(selectedTrajectoryCandidate)}</h3>
+                  <p className="text-sm text-[#6b7063] truncate">{getDisplayEmail(selectedTrajectoryCandidate)}</p>
+                  <p className="text-xs text-[#a8a49d] mt-1">
+                    {jobs.find(job => job.id === selectedTrajectoryCandidate.jobId)?.title || 'Sourced Position'} - {getCandidatePhase(selectedTrajectoryCandidate.status, selectedTrajectoryCandidate.answers)}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedTrajectoryCandidate(null)}
+                className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-[#a8a49d] hover:text-[#1c1c1a] hover:bg-white transition-colors flex-shrink-0"
+                title="Close profile"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 overflow-y-auto max-h-[calc(90vh-105px)] space-y-5">
+              <div className="grid sm:grid-cols-3 gap-3">
+                <div className="rounded-xl border border-[#e4e1da] bg-[#f7f6f3] p-4">
+                  <p className="text-xs text-[#a8a49d] uppercase tracking-wider font-semibold inline-flex items-center gap-1.5">
+                    <span>Position Fit</span>
+                    <KnowledgeTooltip label="Explain position fit">
+                      {positionFitHelp}
+                    </KnowledgeTooltip>
+                  </p>
+                  <p className="text-2xl text-[#2d6a55] font-semibold mt-1">{selectedTrajectoryCandidate.matchScore}%</p>
+                </div>
+                <div className="rounded-xl border border-[#e4e1da] bg-[#f7f6f3] p-4">
+                  <p className="text-xs text-[#a8a49d] uppercase tracking-wider font-semibold inline-flex items-center gap-1.5">
+                    <span>Trajectory</span>
+                    <KnowledgeTooltip label="Explain trajectory">
+                      {trajectoryHelp}
+                    </KnowledgeTooltip>
+                  </p>
+                  <p className="text-2xl text-[#c9a84c] font-semibold mt-1">{selectedTrajectoryCandidate.trajectoryScore}%</p>
+                </div>
+                <div className="rounded-xl border border-[#e4e1da] bg-[#f7f6f3] p-4">
+                  <p className="text-xs text-[#a8a49d] uppercase tracking-wider font-semibold inline-flex items-center gap-1.5">
+                    <span>Screening</span>
+                    <KnowledgeTooltip label="Explain screening">
+                      Screening is the interview-answer evaluation score after the candidate completes the sandbox questions.
+                    </KnowledgeTooltip>
+                  </p>
+                  <p className="text-2xl text-[#1c1c1a] font-semibold mt-1">{selectedTrajectoryCandidate.screeningScore ?? '--'}</p>
+                </div>
+              </div>
+
+              {selectedTrajectoryCandidate.evaluation?.role_alignment_summary && (
+                <div className="rounded-xl border border-[#e4e1da] bg-[#f7f6f3] p-4 text-left">
+                  <p className="text-xs text-[#a8a49d] uppercase tracking-wider font-semibold mb-2">Role Alignment Summary</p>
+                  <p className="text-xs text-[#52574e] leading-relaxed">{selectedTrajectoryCandidate.evaluation.role_alignment_summary}</p>
+                </div>
+              )}
+
+              {selectedTrajectoryCandidate.evaluation?.score_breakdown && (
+                <div className="rounded-xl border border-[#e4e1da] bg-[#f7f6f3] p-4 text-left">
+                  <p className="text-xs text-[#a8a49d] uppercase tracking-wider font-semibold mb-3">Position-Focused Score Breakdown</p>
+                  <div className="grid grid-cols-5 gap-2">
+                    {[
+                      ['Role', selectedTrajectoryCandidate.evaluation.score_breakdown.role_requirement_alignment, 35],
+                      ['Depth', selectedTrajectoryCandidate.evaluation.score_breakdown.technical_correctness_depth, 25],
+                      ['Evidence', selectedTrajectoryCandidate.evaluation.score_breakdown.evidence_specificity, 20],
+                      ['Impact', selectedTrajectoryCandidate.evaluation.score_breakdown.position_impact, 10],
+                      ['Clarity', selectedTrajectoryCandidate.evaluation.score_breakdown.communication_clarity, 10]
+                    ].map(([label, val, max]) => (
+                      <div key={label} className="rounded-lg border border-[#e4e1da] bg-white p-2.5 text-center">
+                        <p className="text-[10px] text-[#a8a49d] uppercase tracking-wider font-bold inline-flex items-center justify-center gap-1">
+                          <span>{label}</span>
+                          <KnowledgeTooltip label={`Explain ${label}`}>
+                            {scoreBreakdownHelp[String(label)]}
+                          </KnowledgeTooltip>
+                        </p>
+                        <p className="text-xs text-[#1c1c1a] font-bold mt-1">{val || 0}/{max}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {(() => {
+                const questionFeedbackItems = getQuestionFeedbackItems(selectedTrajectoryCandidate);
+                return questionFeedbackItems.length ? (
+                  <div className="rounded-xl border border-[#e4e1da] bg-[#f7f6f3] p-4 text-left">
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                      <div>
+                        <p className="text-xs tracking-wider uppercase text-[#a8a49d] font-semibold">Interview Session</p>
+                        <p className="text-xs text-[#6b7063] mt-1">Detailed transcript and critique from the interview session.</p>
+                      </div>
+                      {selectedTrajectoryCandidate.screeningScore !== undefined && (
+                        <span className="rounded-full bg-white border border-[#e4e1da] px-2.5 py-1 text-xs font-semibold text-[#1c1c1a] inline-flex items-center gap-1.5">
+                          <span>Score: {selectedTrajectoryCandidate.screeningScore}/100</span>
+                          <KnowledgeTooltip label="Explain screening score">
+                            Overall interview-screening score generated from the candidate's submitted answers and detailed question feedback.
+                          </KnowledgeTooltip>
+                        </span>
+                      )}
+                    </div>
+                    <div className="space-y-4 pl-2 border-l border-[#e4e1da]">
+                      {questionFeedbackItems.map((item: any, critiqueIndex: number) => {
+                        const answer = item.candidate_answer || selectedTrajectoryCandidate.answers?.[critiqueIndex] || item.candidate_answer_excerpt || '';
+                        return (
+                          <div key={`${selectedTrajectoryCandidate.email}-overview-feedback-${critiqueIndex}`} className="space-y-2 relative pl-4 before:absolute before:left-0 before:top-3.5 before:w-3 before:h-[1px] before:bg-[#e4e1da]">
+                            <div className="bg-white border border-[#e4e1da] rounded-xl p-4 shadow-sm space-y-3">
+                              <div className="flex items-center justify-between border-b border-[#e4e1da] pb-2">
+                                <span className="text-xs font-bold text-[#2d6a55]">
+                                  Question {critiqueIndex + 1}
+                                </span>
+                                {item.per_answer_score !== undefined && (
+                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-[#e8f2ee] text-[#2d6a55] border border-[#c8e6d8] inline-flex items-center gap-1">
+                                    <span>Score: {item.per_answer_score}/100</span>
+                                    <KnowledgeTooltip label="Explain per-question score">
+                                      Score for this individual answer based on role alignment, technical depth, evidence, impact, and clarity.
+                                    </KnowledgeTooltip>
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="space-y-1">
+                                <p className="text-[10px] font-semibold uppercase text-[#a8a49d]">Question</p>
+                                <p className="text-xs text-[#1c1c1a] font-medium italic">"{cleanQuestionText(item.question || selectedTrajectoryCandidate.customQuestions?.[critiqueIndex] || `Screening question ${critiqueIndex + 1}`, critiqueIndex)}"</p>
+                                {item.requirement_focus && (
+                                  <p className="text-[9px] text-[#6b7063]">Requirement focus: {item.requirement_focus}</p>
+                                )}
+                              </div>
+
+                              <div className="bg-[#f7f6f3] rounded-lg p-3 border border-[#e4e1da]/60">
+                                <p className="text-[10px] font-semibold uppercase text-[#a8a49d] mb-1">Candidate Answer</p>
+                                <p className="text-xs text-[#52574e] leading-relaxed whitespace-pre-wrap">
+                                  {answer || 'No answer submitted'}
+                                </p>
+                              </div>
+
+                              <div className="bg-[#f0f7f4] rounded-lg p-3 border border-[#c8e6d8]">
+                                <p className="text-[10px] font-semibold uppercase text-[#2d6a55] mb-1 inline-flex items-center gap-1.5">
+                                  <span>AI Feedback</span>
+                                  <KnowledgeTooltip label="Explain AI feedback">
+                                    Interviewer-style feedback explaining what the candidate answer proves and what it does not prove.
+                                  </KnowledgeTooltip>
+                                </p>
+                                <p className="text-xs text-[#245747] leading-relaxed">
+                                  {alignScoreMentions(item.critique || item.feedback || item.hiring_manager_note || 'Agent feedback has not been generated for this question yet.', item.per_answer_score)}
+                                </p>
+                              </div>
+
+                              {item.strengths?.length ? (
+                                <div className="mt-2 pl-1">
+                                  <p className="text-[10px] text-[#2d6a55] uppercase tracking-wider font-semibold mb-1 inline-flex items-center gap-1.5">
+                                    <span>Evidence supporting the score</span>
+                                    <KnowledgeTooltip label="Explain evidence supporting the score">
+                                      Answer details that support awarding points, such as relevant examples, tools, outcomes, or reasoning.
+                                    </KnowledgeTooltip>
+                                  </p>
+                                  <ul className="space-y-0.5">
+                                    {item.strengths.map((strength: string, strengthIndex: number) => (
+                                      <li key={strengthIndex} className="text-xs text-[#3d5a4a] leading-relaxed flex items-start gap-1.5">
+                                        <CheckCircle2 className="w-3 h-3 text-[#2d6a55] flex-shrink-0 mt-0.5" />
+                                        <span>{strength}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              ) : null}
+                              {item.weaknesses?.length ? (
+                                <div className="mt-2 pl-1">
+                                  <p className="text-[10px] text-[#c25a2a] uppercase tracking-wider font-semibold mb-1 inline-flex items-center gap-1.5">
+                                    <span>Risks or missing proof</span>
+                                    <KnowledgeTooltip label="Explain risks or missing proof">
+                                      Missing evidence, vague claims, off-topic content, or concerns HR should verify before advancing the candidate.
+                                    </KnowledgeTooltip>
+                                  </p>
+                                  <ul className="space-y-0.5">
+                                    {item.weaknesses.map((weakness: string, weaknessIndex: number) => (
+                                      <li key={weaknessIndex} className="text-xs text-[#6b7063] leading-relaxed flex items-start gap-1.5">
+                                        <AlertCircle className="w-3 h-3 text-[#c25a2a] flex-shrink-0 mt-0.5" />
+                                        <span>{weakness}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              ) : null}
+                              {(item.suggested_improvement || item.hiring_manager_note) && (
+                                <div className="mt-2 rounded-lg border border-[#e4e1da] bg-[#f7f6f3] p-2.5">
+                                  {item.hiring_manager_note && (
+                                    <p className="text-xs text-[#1c1c1a] leading-relaxed">
+                                      <span className="font-semibold text-[10px] inline-flex items-center gap-1.5">
+                                        <span>Hiring manager note:</span>
+                                        <KnowledgeTooltip label="Explain hiring manager note">
+                                          A decision-ready note summarizing what HR should take away from this answer.
+                                        </KnowledgeTooltip>
+                                      </span> {item.hiring_manager_note}
+                                    </p>
+                                  )}
+                                  {item.suggested_improvement && (
+                                    <p className="text-xs text-[#6b7063] leading-relaxed mt-1">
+                                      <span className="font-semibold text-[#1c1c1a] text-[10px] inline-flex items-center gap-1.5">
+                                        <span>Suggested probe:</span>
+                                        <KnowledgeTooltip label="Explain suggested probe">
+                                          A recommended follow-up question to test uncertain areas or gather stronger evidence.
+                                        </KnowledgeTooltip>
+                                      </span> {item.suggested_improvement}
+                                    </p>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null;
+              })()}
+
+              <div className="rounded-xl border border-[#e4e1da] p-4">
+                <p className="text-xs tracking-wider uppercase text-[#a8a49d] mb-2 font-semibold">Profile Summary</p>
+                <p className="text-sm text-[#6b7063] leading-relaxed">
+                  {selectedTrajectoryCandidate.about || selectedTrajectoryCandidate.resumeSummary || selectedTrajectoryCandidate.positionFitSummary || 'No profile summary is available yet.'}
+                </p>
+              </div>
+
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div className="rounded-xl border border-[#e4e1da] p-4">
+                  <p className="text-xs tracking-wider uppercase text-[#a8a49d] mb-2 font-semibold">Experience</p>
+                  {selectedTrajectoryCandidate.experiences?.length ? (
+                    <div className="space-y-2">
+                      {selectedTrajectoryCandidate.experiences.slice(0, 3).map((experience, index) => (
+                        <div key={`${experience.title}-${experience.company}-${index}`} className="rounded-lg bg-[#f7f6f3] border border-[#e4e1da] p-3">
+                          <p className="text-sm text-[#1c1c1a] font-semibold">{experience.title || 'Experience'}</p>
+                          <p className="text-xs text-[#6b7063] mt-0.5">{[experience.company, experience.duration].filter(Boolean).join(' - ') || 'Company details not found'}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-[#6b7063]">No experience details extracted.</p>
+                  )}
+                </div>
+
+                <div className="rounded-xl border border-[#e4e1da] p-4">
+                  <p className="text-xs tracking-wider uppercase text-[#a8a49d] mb-2 font-semibold">Education & Skills</p>
+                  {selectedTrajectoryCandidate.education?.length ? (
+                    <div className="space-y-2 mb-3">
+                      {selectedTrajectoryCandidate.education.slice(0, 2).map((education, index) => (
+                        <div key={`${education.degree}-${education.school}-${index}`} className="rounded-lg bg-[#f7f6f3] border border-[#e4e1da] p-3">
+                          <p className="text-sm text-[#1c1c1a] font-semibold">{education.degree || 'Education'}</p>
+                          <p className="text-xs text-[#6b7063] mt-0.5">{education.school || 'School details not found'}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  {selectedTrajectoryCandidate.skills?.length ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {selectedTrajectoryCandidate.skills.slice(0, 10).map(skill => (
+                        <span key={skill} className="px-2 py-0.5 bg-[#f0ede8] rounded-full text-xs text-[#6b7063]">{skill}</span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-[#6b7063]">No skills extracted.</p>
+                  )}
+                </div>
+              </div>
+
+              {selectedTrajectoryCandidate.positionFitSummary && (
+                <div className="rounded-xl border border-[#c8e6d8] bg-[#f8fcfa] p-4">
+                  <p className="text-xs tracking-wider uppercase text-[#2d6a55] mb-2 font-semibold">Position Fit Reasoning</p>
+                  <p className="text-sm text-[#3d5a4a] leading-relaxed">{selectedTrajectoryCandidate.positionFitSummary}</p>
+                </div>
+              )}
+
+              {(selectedTrajectoryCandidate.biasControl || selectedTrajectoryCandidate.resumeContextIntelligence?.signals?.length) && (
+                <div className="rounded-xl border border-[#e4e1da] bg-[#f7f6f3] p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                    <p className="text-xs tracking-wider uppercase text-[#a8a49d] font-semibold">Why the score changed</p>
+                    <span className="px-2 py-0.5 rounded-full bg-white border border-[#e4e1da] text-xs text-[#6b7063] font-semibold">
+                      {selectedTrajectoryCandidate.biasControl?.scoring_mode === 'prestige_aware' ? 'Reputation included' : 'Skills only'}
+                    </span>
+                  </div>
+                  {selectedTrajectoryCandidate.biasControl?.explanation && (
+                    <p className="text-sm text-[#6b7063] leading-relaxed mb-2">{selectedTrajectoryCandidate.biasControl.explanation}</p>
+                  )}
+                  {selectedTrajectoryCandidate.biasControl?.calculation && (
+                    <div className="mb-2 rounded-lg border border-[#e4e1da] bg-white px-3 py-2">
+                      <p className="text-[10px] tracking-wider uppercase text-[#a8a49d] font-semibold">Active Formula</p>
+                      <p className="text-xs text-[#1c1c1a] font-semibold mt-1">
+                        {selectedTrajectoryCandidate.biasControl.calculation.formula}
+                      </p>
+                      {(selectedTrajectoryCandidate.biasControl.calculation.delta || 0) === 0 && (selectedTrajectoryCandidate.biasControl.calculation.reputation_weight || 0) > 0 && (
+                        <p className="mt-1 text-[11px] text-[#6b7063]">
+                          Rounded score unchanged because merit and reputation scores are close at this weight.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  {selectedTrajectoryCandidate.resumeContextIntelligence?.signals?.map(signal => (
+                    <p key={signal} className="text-xs text-[#2d6a55] font-medium">{signal}</p>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      </>
+      )}
+    </div>
+  );
+}

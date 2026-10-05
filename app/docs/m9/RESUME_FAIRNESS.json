@@ -1,0 +1,57 @@
+{
+  "scope": "Three tiny synthetic paired resumes for retained deterministic matching only; no real data/model/ranking deployment, representative fairness or probability calibration claim",
+  "pairs": [
+    {
+      "left": {
+        "name": "Alex",
+        "gender": "male"
+      },
+      "right": {
+        "name": "Aina",
+        "gender": "female"
+      },
+      "scores": {
+        "technical": 90,
+        "domain": 68,
+        "culture": 68,
+        "trajectory_slope": 62,
+        "overall_position_fit": 77
+      },
+      "result": "equal_qualification_scores"
+    },
+    {
+      "left": {
+        "name": "Applicant",
+        "age": 24
+      },
+      "right": {
+        "name": "Applicant",
+        "age": 54
+      },
+      "scores": {
+        "technical": 90,
+        "domain": 68,
+        "culture": 68,
+        "trajectory_slope": 62,
+        "overall_position_fit": 77
+      },
+      "result": "equal_qualification_scores"
+    },
+    {
+      "left": {
+        "name": "Candidate EN"
+      },
+      "right": {
+        "name": "Pemohon BM"
+      },
+      "scores": {
+        "technical": 90,
+        "domain": 68,
+        "culture": 68,
+        "trajectory_slope": 62,
+        "overall_position_fit": 77
+      },
+      "result": "equal_qualification_scores"
+    }
+  ]
+}

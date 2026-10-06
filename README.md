@@ -435,8 +435,4 @@ KerjaOS/
 | [Budget and licenses](app/docs/m9/BUDGET.md) | Service constraints and dependency/license review |
 | [Application history](app/README.md) | Preserved per-phase notes and original source attribution |
 
-## Acknowledgements
 
-KerjaOS builds on retained review modules and source from [404-Brain-Not-Found-Recruiter](https://github.com/Xiaoming0313883/404-Brain-Not-Found-Recruiter). Original attribution remains in [the application history](app/README.md). Historical UI dependency notices are retained in [the UI documentation](app/docs/ui/THIRD_PARTY/).
-
-README presentation references: [404-Brain-Not-Found-Recruiter](https://github.com/Xiaoming0313883/404-Brain-Not-Found-Recruiter) and [DraftWise](https://github.com/TEE123754/DraftWise).

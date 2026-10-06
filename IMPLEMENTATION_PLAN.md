@@ -443,27 +443,29 @@ User decision on 5 October 2026: keep the application local now; Supabase config
 
 ### L1 — Supabase-connected localhost integration
 
-Status: NOT_STARTED — waiting for development configuration. Frontend at localhost:5173, FastAPI at localhost:8000, existing Vite same-origin API proxy. A remote Supabase development project is a dependency, not deployment of the frontend/backend.
+Status: IN_PROGRESS — local credentials/encryption configured; selected Morpheus adapter built. Database access/project selection, migrations and full localhost journeys remain pending. See app/docs/l1/SETUP.md. Configuration slice gate PASSED (app/docs/l1/GATE.md); full L1 gate is NOT_RUN because schema/private bucket are missing. Frontend at localhost:5173, FastAPI at localhost:8000, existing Vite same-origin API proxy. A remote Supabase development project is a dependency, not deployment of the frontend/backend.
 
 | Task | Done | Deliverable / what remains |
 | --- | --- | --- |
-| L1-01 | [ ] | Configure ignored app/backend/.env with development Supabase URL, publishable/anon key and server-only secret/service-role key. Validate key compatibility without printing keys. Keep browser env free of server keys. |
-| L1-02 | [ ] | Inspect selected project/migration state and permissions; prefer an isolated synthetic development project. Obtain DATABASE_URL for SQL migration/backup/concurrency tooling, or use owner-operated SQL Editor if no database connection is available. API keys alone do not provide SQL migration/pg_dump access. |
-| L1-03 | [ ] | Generate missing independent session/document/backup encryption keys locally; preserve existing keys if encrypted data already exists. Set local URLs/origins/cookies, keep APP_MODE=demo_free and optional providers/sender/worker off. |
+| L1-01 | [x] | Supplied Supabase URL/publishable/modern server secret/JWKS and Morpheus credentials saved in ignored backend/.env; modern secret alias supported; frontend contains only same-origin API URL. Auth/JWKS accepted publishable key; schema/Storage accepted server secret (HTTP 200). M1 tables/M12 RPCs/private bucket absent; full login readiness pending. |
+| L1-02 | [ ] | Read-only project inspection confirms required app schema/private bucket absent. Still need owner-selected development-project confirmation and DATABASE_URL or owner-operated SQL Editor. API keys alone do not provide SQL migration/pg_dump access. |
+| L1-03 | [x] | Missing independent session/document/backup keys generated locally, existing keys preserved. Localhost/127.0.0.1 origins and non-secure local cookie configured; demo_free retained. Selected bounded public-FAQ Morpheus adapter locally enabled under latest low-cost authorization; DB external policy, other providers, senders/workers stay off. |
 | L1-04 | [ ] | Back up any existing data/grants and rehearse restore on an isolated target; then apply actual M1–M12 migrations in order. Inspect schema/custom routines/private bucket/Data API grants. Review existing legacy backfill and count reconciliation if the selected project contains old data; no destructive reset. |
 | L1-05 | [ ] | Bootstrap verified synthetic candidates A/B, assigned HM/interviewer with MFA, employer/jobs X/Y, published quiz bank and demo policies. Configure exact localhost Auth redirects. Optional Google OAuth needs separate provider configuration; signup/recovery email stays off until an eligible sender exists. |
-| L1-06 | [ ] | Start real local frontend/backend connected to Supabase. Rehearse complete candidate/staff journeys: apply multiple jobs, resume/filter/history, manual identity/background consent/review, quiz/practice, progress chatbot, discovery metadata, human interview/offer/accept/hire, manual tracker/resume library, analytics and reminders. Distinguish live Supabase behavior from fixture tests. |
+| L1-06 | [ ] | Local frontend/backend started on 127.0.0.1:5173/8000; frontend HTML and direct/proxied health HTTP 200. Full journeys blocked until migrations/accounts are configured. Rehearse complete candidate/staff journeys: apply multiple jobs, resume/filter/history, manual identity/background consent/review, quiz/practice, progress chatbot, discovery metadata, human interview/offer/accept/hire, manual tracker/resume library, analytics and reminders. Distinguish live Supabase behavior from fixture tests. |
 | L1-GATE | [ ] | At completed integration, one affected Supabase/localhost gate: Auth refresh/logout/revocation/MFA/CSRF, direct Data API RLS and private Storage denial, expiring previews, RPC permissions, real rows/snapshot/history/exports and local proxy/streaming. No repeat of every model evaluation or unrelated passed suite. Save evidence and remaining hosted-only issues. |
+
+L1-AI configuration slice: gpt-oss-120b selected from authenticated active catalog; official rate $0.07/$0.28 per million input/output tokens. Adapter and provenance wrapper built, 256-token cap/no retries/rules fallback/public-code-only input; phase-end gate PASSED: 37 initial backend tests plus 16 targeted provider reruns (38 distinct cases), 44 SQL assertions, valid live public FAQ smoke with actual model openai/gpt-oss-120b. An initial model-label mismatch was corrected; no unrelated suite rerun. Ordered M1–M12 plus L1 metadata SQL bundle prepared locally; remote execution pending SQL access. Latest owner instruction permits this inexpensive inference exception; no paid purchases or other paid activation.
 
 Synthetic accounts/documents only. Local recovery and direct database checks may need additional owner-selected account/database access beyond API keys. Do not create real candidates, scrape sources or send email through this stage.
 
 ### L2 — Local hardening and release readiness
 
-Status: NOT_STARTED — depends on L1. Work remains on local app processes and isolated development data.
+Status: IN_PROGRESS — U1 local parity/UI slice complete; remaining live readiness work depends on L1. Work remains on local app processes and isolated development data.
 
 | Task | Done | Deliverable / what remains |
 | --- | --- | --- |
-| L2-01 | [ ] | Audit original product parity: map Requirement/Resume/Bias/Matching/Interview A/B/Report/Email Planning/Action Policy and graph/SSE/calendar features to active authorized routes/UI. Preserved source or passing legacy unit tests alone is not usable feature parity. Record intentionally disabled capabilities; repair confirmed functional gaps without reviving unsafe legacy endpoints. |
+| L2-01 | [x] | Local audit and active-gap repairs complete (app/docs/ui/PARITY.md, GATE.md); full live integration still L1. Audit original product parity: map Requirement/Resume/Bias/Matching/Interview A/B/Report/Email Planning/Action Policy and graph/SSE/calendar features to active authorized routes/UI. Preserved source or passing legacy unit tests alone is not usable feature parity. Record intentionally disabled capabilities; repair confirmed functional gaps without reviving unsafe legacy endpoints. |
 | L2-02 | [ ] | Use real Postgres multiple connections for transition/evidence/quiz timeout/scheduling/resume-clone races and reminder/worker lease/revision/preference/global quota ordering. Verify cancellation before dispatch and document in-flight limits. |
 | L2-03 | [ ] | Rehearse encrypted object inventory/backup/restore with newest deletion, opt-out, dispatch and consent/business reconciliation. Run bounded cleanup locally; prove expired/removed access stays blocked and restored reminders cannot resend. Document an operator-reviewed full account-erasure procedure; private-workspace erasure is not complete account deletion. |
 | L2-04 | [ ] | Measure local query/response/worker performance and metadata/retention backlog. Review rate-limit behavior and design proxy-aware/distributed controls needed for public hosting. Address recorded development dependency advisory and unknown/legacy/model license gaps; review secret exposure without printing values. |
@@ -501,3 +503,138 @@ Place values in ignored app/backend/.env, not chat or frontend VITE_ variables:
 - DATABASE_URL for operator SQL/backup/concurrency work, if available; otherwise record the SQL Editor/manual-access route and defer unavailable tooling.
 
 Engineering generates missing encryption keys locally. Keep private files out of Git; app/.gitignore already ignores backend/.env. Report only configured/missing status. L1 begins when the owner reports the development configuration ready; no keys are needed for this planning update.
+
+### U1 — Windows desktop UI, demo sign-in and active feature parity
+
+Status: LOCAL_GATE_PASSED — implementation and affected gate complete locally; see app/docs/ui/PARITY.md for the feature-by-feature mapping. This local slice advances L2-01 without claiming L1 remote integration is complete. Deployment remains D1, last.
+
+| Task | Done | Deliverable / remaining |
+| --- | --- | --- |
+| U1-01 | [x] | React95 and Themesberg reference review; MIT notices retained; adapted retro CSS/React shell, Classic/Luna, mobile layout and KerjaOS-only product copy. |
+| U1-02 | [x] | Prefilled public candidate/recruiter demo accounts and isolated sample applications/jobs/quiz/interviews/tracker/reports/reminders/privacy. Normal real authentication retained. |
+| U1-03 | [x] | Active own profile/PDF parsing and MFA/employer/job-scoped job builder, accounts, encrypted manual sourcing; deterministic requirement/resume/bias/matching/interview/report/email-draft and read-only agent stream. Additive SQL migration prepared locally. |
+| U1-04 | [x] | Original-feature audit mapped active routes and intentional restrictions; avatar upload remains a gap, automated sourcing/live email need activation, no unsupported all-live parity claim. |
+| U1-GATE | [x] | 32 backend tests, 26 SQL assertions, four browser journeys, typecheck/build and visual review passed. Targeted repairs/reruns recorded in app/docs/ui/GATE.md. |
+| U1-LIVE | [ ] | L1 migrations, synthetic candidate/staff/MFA setup and full real-account journeys. API credentials alone do not install schema. Source expiry physically cleaned by service-only operator RPC. |
+| U1-REMAIN | [ ] | Avatar upload and separately configured OAuth/sender/approved-source operations as needed; deployment deferred to D1. |
+
+Update this checklist and PROGRESS.md after each phase and before reaching the usage limit, including completed work, failures and remaining tasks. Run tests only once a phase is built, then rerun affected failed checks rather than unrelated passed suites.
+
+### U2 — Original portal UX and missing visible features
+
+Status: LOCAL_GATE_PASSED. Corrects U1's overly broad parity claim; original overview/trajectory/fair-controls were not usable even though their agent helpers existed.
+
+| Task | Done | Deliverable / remaining |
+| --- | --- | --- |
+| U2-01 | [x] | Compare public main with preserved source (same be3bf1de commit); enumerate original route groups and subfeatures in app/docs/ui/PARITY.md. |
+| U2-02 | [x] | Active position dashboards/KPIs/pipeline, trajectory chart/detail tabs, search/status/score filters/sorting and high-potential alerts. Missing scores remain unassessed. |
+| U2-03 | [x] | Fair hiring panel, identity/institution display controls, paired synthetic candidates and reputation-weight audit comparison. Merit recommendations exclude institution rank, regardless of display preference. |
+| U2-04 | [x] | Original-like horizontal portal tabs and separate recruiter workflows with Windows 95 panels. Candidate results entry restored; no old branding in product UI. |
+| U2-05 | [x] | Read-only assigned-job dashboard RPC and authorized current encrypted resume review; human notes/shortlist/reject use existing guarded transitions. Additive SQL prepared locally. |
+| U2-GATE | [x] | 46 backend cases, 40 SQL assertions, six browser journeys, typecheck/build and visual review passed. Repairs and targeted reruns: app/docs/ui/U2-GATE.md. |
+| U2-LEFT | [ ] | L1 migration/accounts/live integration, avatar/photo upload, persisted assessment history/fair-control policy, optional sender/OAuth/approved sourcing; complete EN/BM review. No claim of fully live transfer until these are done. |
+| U2-DEPLOY | [ ] | D1 remains last and deferred. |
+
+Keep this checklist and PROGRESS.md current before usage limits. Remaining original feature gaps stay explicit until built and verified, not silently counted from preserved source.
+
+### U3 — Modern dashboard redesign from five reel references
+
+Status: LOCAL_GATE_PASSED (6 October 2026). The user explicitly replaced Windows 95/XP on 5 October 2026. This section supersedes U1/U2 retro visuals and the original M8/F10 styling; their functional work and recorded past gates remain valid history.
+
+| Task | Done | Deliverable / remaining |
+| --- | --- | --- |
+| U3-01 | [x] | Viewed all five reels: sage/pastel dashboard, dark admin/smart-home layouts, green and cream bento animation. Reference links and decisions in PRD F10. No commercial template/media copied. |
+| U3-02 | [x] | Shared modern light/dark tokens, rounded cards, pastel KPIs, responsive sidebar/strip, readable typography, gentle motion with reduced-motion support. No dependency added. |
+| U3-03 | [x] | Redesigned sign-in with prefilled candidate/recruiter accounts, branding mark, account auth/recovery preserved, theme persistence and legacy appearance migration. |
+| U3-04 | [x] | Removed window chrome/taskbar/artificial clock/drag controls; mounted collapsible real panels retain drafts. Kept application, assessment, verification, discovery, assistant, calendar, tracker, analytics, reminder and privacy modules. |
+| U3-05 | [x] | Recruiter overview bento layout retains actual fit/trajectory, fair controls, paired audit, candidate details and pipeline filters; real auth/CSRF/scoping untouched. |
+| U3-GATE | [x] | Foundation TypeScript check, production build and eight distinct affected browser journeys passed. Axe checks in sampled light/dark views, 390px layout, 200% zoom, retained interview drafts and visual desktop/mobile review passed. Initial failures and targeted repairs/reruns: app/docs/ui/U3-GATE.md. |
+| U3-LEFT | [ ] | Existing L1 schema/private bucket/MFA/live journeys, avatar, persisted assessment/fair-policy, optional OAuth/sender/approved sources, full EN/BM review remain separate. |
+| U3-DEPLOY | [ ] | Stay local. D1 hosted deployment remains the last phase. |
+
+Update this checklist and PROGRESS.md after the gate and before usage limits. Run tests only once a phase is built; after repairs rerun affected failed checks, not unrelated passed suites.
+
+### U4 — Blue/violet brand palette
+
+Status: LOCAL_GATE_PASSED (6 October 2026). User requested a different main colour. The modern U3 layout remains; blue/violet supersedes its green/sage palette.
+
+| Task | Done | Deliverable / remaining |
+| --- | --- | --- |
+| U4-01 | [x] | Royal blue #4254D6 primary actions/mark/chart/progress; indigo navigation, blue/violet sign-in hero, cool canvas and coordinated pastel metrics. |
+| U4-02 | [x] | Updated light/dark surface, text, focus, controls and selection colours across demo and account screens; shared CSS only, no workflow changes. |
+| U4-03 | [x] | PRD and current README palette descriptions updated; original reel references and layout retained. |
+| U4-GATE | [x] | Production build and three existing affected browser journeys passed. Zero sampled axe violations in login/candidate light and recruiter light/dark views; mobile fit, trajectory/fair controls and unassessed fallback retained. Visual login and light/dark dashboard review complete. Details: app/docs/ui/U4-GATE.md. |
+| U4-LEFT | [ ] | Existing L1/live integration, avatar, persisted assessments/fair policy, optional services and complete EN/BM copy review remain open. |
+| U4-DEPLOY | [ ] | Local only; D1 deployment remains last. |
+
+Update the checklist and PROGRESS.md after this phase and before usage limits. Run tests only after phase construction; rerun only failed affected checks.
+
+### DOC1 — Product README refresh
+
+Status: DOC_REVIEW_PASSED (6 October 2026). Documentation-only work requested using the two repository READMEs as presentation references. No application code or service configuration changed.
+
+| Task | Done | Deliverable / remaining |
+| --- | --- | --- |
+| DOC1-01 | [x] | Read the 404-Brain-Not-Found-Recruiter and DraftWise READMEs; adapt their product overview, evidence tables, workflow/architecture, demo and setup structure to KerjaOS. |
+| DOC1-02 | [x] | Replace the root README with current branding, candidate/recruiter features, overview/trajectory/fair controls, screenshots, demo accounts, scoring boundaries, stack, API map, privacy, troubleshooting and documentation index. |
+| DOC1-03 | [x] | Add three portable blue/violet screenshots under docs/images/; preserve original attribution and phase history in app/README.md with a link to the current root entry point. |
+| DOC1-04 | [x] | Document PowerShell local startup, non-overwriting environment template copy, exact localhost origins, backend-only credentials and L1 prerequisites. Separate L1/L2 local work from final D1 deployment and gated optional services. |
+| DOC1-GATE | [x] | Verify 44 local file/image references, 25 anchor references, three JPEGs, three PowerShell blocks with zero syntax errors, demo setting names against .env.example, source/gate claims and Git whitespace. Correct screenshot extensions to match their actual JPEG encoding. No application tests/build run for docs-only changes. |
+
+README work is complete. Existing L1 migration/private bucket/synthetic Auth/MFA/live journeys, L2 feature/readiness gaps and D1 final deployment remain open in their own checklists. Documentation does not mark them completed or activate optional services. Update this plan and PROGRESS.md during/after each phase and before usage limits; run application tests only when a built phase is ready for its completion gate.
+
+### U5 / H1 — Selected reel UI and company HR baseline
+
+Status: LOCAL_GATE_PASSED (6 October 2026). Owner explicitly expanded KerjaOS to recruitment AND employee management, including payroll/timesheets. Accepted human hire → company invitation → employee dashboard is in scope. Dd7AalkTZPY and its creator-linked public Coterie preview define the cream/yellow UI. Original implementation and assets; no paid template source copied.
+
+| Task | Done | Deliverable / remaining |
+| --- | --- | --- |
+| U5-01 | [x] | View reel and public Overview/People/Payroll; inventory pill nav, segmented rail, portrait, graph, timer, tasks, accordions, weekly/monthly calendars, roster and directory. |
+| U5-02 | [x] | Cream/yellow/black tokens, local OFL Outfit/Inter fonts, responsive bento layout, dark mode, reduced motion and original fictional demo portrait. |
+| U5-03 | [x] | Connected graph/report, timer/draft timesheet, tasks/notifications, people search/filter/selection, event details/creation, monthly hours/payroll. |
+| U5-04 | [x] | Recruiter management overview, ready employee demo and accepted hire rehearsal; existing recruitment, trajectory/fair controls and career tools retained. |
+| H1-01 | [x] | Additive private SQL schema/FastAPI for employment, independent HR/payroll grants, tasks, time, leave, payroll ledger/events. No direct client table access. |
+| H1-02 | [x] | Canonical accepted final human hire creates invitation. Candidate joins to open default employee dashboard; other applications remain available. |
+| H1-03 | [x] | Task completion; own time/leave submission; separate HR review; offboarding reason; company/owner/session/grant/MFA/revision/idempotency/audit boundaries. |
+| H1-04 | [x] | Integer-cent MYR payroll draft → approved → issued, month/person calendar, CSV and own issued payslip. No employee self approval or bank payment. |
+| U5-H1-GATE | [x] | Foundation typecheck/build, 16 API cases, 64 actual offline PostgreSQL assertions and 12 distinct browser journeys passed; sampled axe/390px/light/dark/reduced-motion, normal-account CSRF/career refresh, human interview and visual review. Only failed/affected cases rerun after repairs. Evidence: app/docs/hr/GATE.md. |
+| H1-LIVE | [ ] | L1 backed-up hosted schema/private bucket, synthetic Auth/MFA accounts, reviewed HR/payroll grant provisioning and real journeys. Migration prepared, NOT applied remotely. |
+| H2-01 | [ ] | Statutory payroll/overtime/holiday/leave entitlement rules, payslip format and salary corrections/reversals. H1 uses manual reviewed figures/calendar-day leave. |
+| H2-02 | [ ] | Contracts/signatures, employee profile editing, device inventory/benefits/pension records and salary history. H1 directory derives name/role from profile/hire. |
+| H2-03 | [ ] | Cursor pagination, company reports, employment/financial audit-export-retention-erasure policy, offboarding access policy, approved notifications and full EN/BM review. H1 serves bounded local cohorts. |
+| H2-04 | [ ] | Optional bank/payment integration only with later explicit authorization. No banking/tax identifiers collected in H1. |
+| U5-LEFT | [ ] | L2 recruitment avatar, persisted assessments/fair policy and readiness remain tracked separately. |
+| D1 | [ ] | Deployment LAST. Stay local until remaining live/legal/readiness gates pass. |
+
+Update this checklist and PROGRESS.md during/after each phase and before usage limits. Tests only when a phase is built; rerun only failed/affected checks.
+
+U5/H1 completion evidence: [HR gate](app/docs/hr/GATE.md), [activation/setup](app/docs/hr/SETUP.md), [reel mapping and original assets](app/docs/ui/U5-ASSETS.md). README/PRD/progress updated; current screenshots show invented data. H1-LIVE/H2/L1/L2 and D1 remain unchecked; no hosted migration or deployment.
+
+### U6 — Management / Recruitment workspace header
+
+Status: LOCAL_GATE_PASSED (6 October 2026). Added an explicit shared mode header, with separate dashboards and preserved in-session pages/drafts. Local only.
+
+| Task | Done | Deliverable / remaining |
+| --- | --- | --- |
+| U6-01 | [x] | Shared native-button Management / Recruitment header; current mode indication, responsive cream/yellow styling and BM labels. |
+| U6-02 | [x] | Separate demo and account management/recruitment surfaces; keep mounted mode state/drafts and employee career access. |
+| U6-03 | [x] | Added keyboard round-trip coverage for people selection, payroll/recruitment drafts and mobile/light/dark accessibility; extended normal-account draft/refresh check and adapted recruiter journeys. |
+| U6-GATE | [x] | Foundation typecheck/build and 12 distinct affected browser journeys passed; keyboard/state preservation, light/dark/390px/200% zoom and visual review. Only failed/affected journeys rerun after contrast/wrapping repairs. Evidence: app/docs/ui/U6-GATE.md. |
+| U6-DOCS | [x] | README mode guide/current screenshot, gate evidence and progress updated. Local preview retained. |
+| D1 | [ ] | Deployment remains LAST; H1-LIVE/H2/L1/L2 work stays open. |
+
+Update this checklist and PROGRESS.md during/after the phase and before usage limits. Run tests only after construction; rerun only failed/affected checks.
+
+### U7 — Combined Main Overview and floating assistant
+
+Status: LOCAL_GATE_PASSED (6 October 2026). User requested a quick-glance overview combining recruitment and management plus a floating chatbox. Local only.
+
+| Task | Done | Deliverable / remaining |
+| --- | --- | --- |
+| U7-01 | [x] | Main Overview header option and recruiter demo entry; current authorized recruitment/HR snapshots drive combined metrics, review queues, phase graph and upcoming company events. |
+| U7-02 | [x] | HR review deep links and recruitment entry preserve mounted dashboard state; explicit loaded/total/company/month scope and unavailable states. |
+| U7-03 | [x] | Floating launcher/chatbox in all signed-in demos/accounts; close/Escape/focus return, session-only demo conversation and existing live authorized progress service plus current HR summary. |
+| U7-04 | [x] | Responsive bento overview/chat styling, EN/BM labels and four browser journeys for cross-dashboard updates, queue links, chatbot session/focus/read-only behavior, own/scoped live API/CSRF and unavailable data; mobile/light/dark/reduced-motion/zoom coverage added. |
+| U7-GATE | [x] | Foundation typecheck/build and all 18 affected browser journeys passed first run; current statistics/queue links, chat scope/CSRF/read-only/focus, employee limits, unavailable data, light/dark/390px/reduced-motion/200% zoom and desktop visual review. No backend/SQL tests repeated. Evidence: app/docs/ui/U7-GATE.md. |
+| U7-DOCS | [x] | Checklist/progress/README/PRD and U7 evidence updated; overview and opened-chat screenshots saved. Local preview retained. |
+| D1 | [ ] | Deployment stays LAST; existing H1-LIVE/H2/L1/L2 gaps remain open. |

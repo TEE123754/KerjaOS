@@ -2,7 +2,7 @@
 
 Last updated: **5 October 2026 (Asia/Kuala_Lumpur)**.
 
-Current phase: **Local feature milestones complete — next L1 Supabase-connected localhost integration; deployment is final D1**.
+Current phase: **L1 IN_PROGRESS — local credentials and bounded Morpheus adapter built; SQL access/migrations and full Supabase journeys pending. Deployment remains final D1.**
 Implementation progress: **12 of 12 planned local implementations/composite functional gates complete; 0 of 12 fully validated release phases complete**. M1–M12 local work is complete. Remaining L1 integration, L2 readiness and D1 final deployment are tracked separately below.
 M1–M12 local functional gates passed (M9 composite scope; M10–M12 affected scope; hosted continuous journey remains pending). Hosted Auth/Storage/proxy, backup/restore/backfill, worker scheduling/contention and real-data legal approval remain deferred until configured.
 
@@ -48,13 +48,13 @@ Detailed done/left/gate tasks: IMPLEMENTATION_PLAN.md section 16. Each phase bui
 
 | Stage | Status | Next / remaining work |
 | --- | --- | --- |
-| L1 Supabase-connected local integration | NOT_STARTED — awaiting development configuration | Safe env/encryption/database access, backed-up M1–M12 migration/restore, synthetic accounts/jobs/MFA/quiz, real localhost journeys/Auth/RLS/Storage gate |
+| L1 Supabase-connected local integration | IN_PROGRESS — configuration slice PASSED | Keys/encryption configured, bounded Morpheus live smoke valid and local processes/proxy running. Missing Supabase schema/private bucket; next project/SQL route, backup/restore/ordered migrations, synthetic accounts and full Auth/RLS/Storage journeys |
 | L2 Local hardening/readiness | NOT_STARTED | Original feature parity, real DB concurrency, deletion/dispatch replay/retention/account procedure, performance/advisory/licenses, UX/calendar/source/policy/demo and final local gate |
 | D1 Deployment — final phase | DEFERRED — held until L1/L2 pass | Free hosting eligibility, hosted secrets/target migration if needed, Vercel/Railway publish and HTTPS/proxy smoke, approved worker schedules, monitoring/free-budget/restore/rollback gate |
 
-- [ ] L1-01 Secure development Supabase configuration.
+- [x] L1-01 Supplied development keys saved in ignored backend/.env; browser secrets excluded; Auth/JWKS/Data API/Storage credential probes HTTP 200; app schema/private bucket still absent.
 - [ ] L1-02 Select/inspect project and SQL/backup connection access.
-- [ ] L1-03 Local encryption/origins/cookies; optional integrations off.
+- [x] L1-03 Independent local encryption/origins/cookies configured; selected low-cost public-FAQ Morpheus adapter prepared; other integrations/DB dispatch off.
 - [ ] L1-04 Backup/isolated restore and ordered additive migration/backfill.
 - [ ] L1-05 Synthetic accounts/MFA/jobs/quiz/Auth redirects.
 - [ ] L1-06 Real localhost candidate/staff journeys.
@@ -74,7 +74,7 @@ Detailed done/left/gate tasks: IMPLEMENTATION_PLAN.md section 16. Each phase bui
 - [ ] D1-05 Hosted monitoring/budgets/rotation/restore/rollback evidence.
 - [ ] D1-GATE Deployed acceptance with optional/legal exclusions explicit.
 
-Evidence: planning only; no keys read, network integration, tests, migration, deployment, email or scheduler action. Feature milestone count remains 12/12 local; integration/release stages are not silently counted complete.
+Current L1 evidence: configuration/adapter gate passed (app/docs/l1/GATE.md); keys stay ignored, read-only service probes and two bounded public FAQ generations performed; local app/proxy starts. No remote SQL/deployment/email/scheduler action. Feature milestone count remains 12/12 local; integration/release stages are not silently counted complete.
 
 ## M0 — Planning
 
@@ -385,3 +385,138 @@ Owner requested local-only app operation with forthcoming Supabase development k
 ### 5 October 2026 — Private GitHub handoff prepared
 
 User authorized publishing the current workspace to https://github.com/TEE123754/KerjaOS. Destination verified private and empty; signed-in GitHub account matches owner. Prepared a root repository snapshot containing app/ plus root PRD/plan/checklist/original input, preserving upstream Git metadata locally outside publication. Source scan found no high-confidence secret-pattern matches across candidate text files; dependencies/builds/test outputs/private data/env excluded. AI/Supabase keys will be supplied later. This is source publication only; L1/L2 integration and final D1 deployment remain pending. Published main at commit 1bea68f5213576ec87e6d9d0bc6428fb12ee1e18; GitHub API confirmed the matching remote commit, main as default branch and repository privacy. Original upstream history is preserved locally in ignored .source-history/app.git. No functional tests rerun for this handoff.
+
+
+### 5 October 2026 — L1 configuration slice constructed
+
+READY_FOR_GATE. Saved supplied keys only in ignored local backend/.env; generated missing independent encryption keys, preserved existing values, configured local cookies/origins and modern server-secret alias. Morpheus authenticated active catalog includes pinned gpt-oss-120b; official listed input/output rates $0.07/$0.28 per million tokens. Built bounded public-FAQ-only adapter, strict output/circuit/no-retry guards and additive requested-model metadata wrapper. Prepared ignored ordered SQL Editor bundle. Next: one affected provider/chat/gateway/SQL gate and one public FAQ/live read-only service smoke. Full L1 remains IN_PROGRESS: project/SQL access, backup/restore/migrations, synthetic accounts/MFA/redirects and continuous journeys pending. No remote SQL/deployment/email/scheduler performed. Latest owner instruction authorizes inexpensive Morpheus use; no purchase or other paid activation.
+
+
+### 5 October 2026 — L1 configuration/adapter gate passed; schema pending
+
+Saved ignored backend credentials and independent encryption keys; modern secret compatibility confirmed by HTTP 200 Auth/JWKS/schema/Storage reads. Selected model valid live response: openai/gpt-oss-120b, strict approved FAQ variant, no fallback. Initial provider-label mismatch fixed by exact pinned alias; 37 initial affected backend tests and 16 targeted provider tests (38 distinct cases), 44 actual PostgreSQL assertions passed. Corrected venv command path and Vite sandbox config-loader access only. Backend/frontend running locally on 127.0.0.1:8000/5173; direct/proxied health and foundation HTML HTTP 200. No frontend change, unrelated regression suite or production build rerun. Git ignore confirmed for credentials/generated bundle.
+
+Full L1 IN_PROGRESS: required M1 schema, M12/provider RPCs and private bucket missing; DATABASE_URL unavailable, owner confirmation of fresh development project/SQL Editor route pending. Next: project/SQL selection, backup/isolated restore then ordered migrations, synthetic accounts/MFA/redirects/jobs/quiz and full real Supabase journeys. L2/D1 unchanged; no remote SQL writes, account creation, email/scheduler/scraping/official checks/deployment. See app/docs/l1/GATE.md.
+
+
+### 5 October 2026 — U1 UI/demo/recruiter parity construction
+
+IN_PROGRESS. User requested React95 + Themesberg reference styling, KerjaOS-only product copy, ready demo accounts and active original-feature parity. Building isolated sample-data candidate/recruiter desktop (no Supabase authentication bypass), responsive retro shell, active scoped job setup/accounts/requirements/resume/bias/matching/Interview A/B/report/email-draft and read-only agent activity adapters. Retaining original offline algorithms; external inference/email/status mutations are not delegated to old graph. New additive L2 recruiter RPC migration is prepared locally; remote execution stays pending SQL access. Tests NOT_RUN during construction. Next: finish UI/demo/parity mapping, then one completed-phase affected gate and visual review.
+
+### 5 October 2026 — U1 local UI/demo/parity gate passed
+
+LOCAL_GATE_PASSED. React95/Windows 95 UI Kit references adapted with MIT notices; active KerjaOS UI has no old brand copy. Ready candidate/recruiter sample credentials are prefilled; isolated demos cannot write private account routes. Added active profile/PDF preview, scoped job builder/application windows/accounts/encrypted manual sources and deterministic requirement/resume/bias/matching/Interview A/B/report/roadmap/email-draft with read-only SSE. Preserved canonical M1–M12 controls. Original-feature audit now in app/docs/ui/PARITY.md with explicit limits.
+
+32 backend tests, 26 actual SQL assertions, four browser journeys, foundation typecheck and production build passed; zero axe violations on sampled login/candidate views and narrow-screen fit. Repaired one JSX closing tag, used normal approved Vite filesystem invocation after sandbox config lookup failure, and corrected job UTC/local editing conversion; targeted typecheck rerun only. Visual screenshot retained locally. No remote SQL, deployment, scraping, delivered email or external model calls this phase.
+
+Remaining: L1 migrations/private bucket/synthetic accounts/MFA/live flows; avatar upload; optional provider/OAuth/sender/source activation; L2 concurrency/restore/retention/readiness and D1 deployment last. Seven-day source expiry is enforced on reads; physical deletion requires documented service cleanup. UI sample English/BM support is partial in new demo modules, so complete EN/BM review remains L2-05. This is local implementation parity, not a claim that every original capability is live. Changes remain uncommitted locally.
+
+### 5 October 2026 — U2 original portal parity correction built
+
+READY_FOR_GATE. Direct upstream main check equals preserved be3bf1de baseline. Restored explicit Overview/position dashboards/KPIs, actual trajectory scores and scatter/detail interactions, fair hiring visibility controls and audit comparison, sample paired candidates, candidate pipeline/search/filter/sort, horizontal role navigation and dedicated workflows. Real assigned dashboard/current encrypted resume review use scoped RPCs; decision/note forms use canonical guarded transitions. Rank bonus found in legacy trajectory helper; active scoring strips institution/rank regardless of display controls. No fake default scores. Tests NOT_RUN during construction; one affected phase gate next.
+
+Remaining original-feature gaps explicitly tracked: avatar upload, persisted assessment history/fair-control policy, optional email/OAuth/approved sourcing and L1 actual migration/accounts/live journeys. New migration prepared only; no remote SQL/deploy/email/external model calls. D1 remains last.
+
+### 5 October 2026 — U2 overview/trajectory/fair-control gate passed
+
+LOCAL_GATE_PASSED. 46 distinct affected backend cases, 40 actual PostgreSQL assertions, six distinct browser journeys, foundation typecheck and production build passed. Initial repairs: qualification-only institution neutralization, calendar Promise callback, deny-expectation correction and explicit selector labels. Reran affected recruiting/SQL/overview checks only; unchanged passed journeys were retained. Read-only review decrypts/parses only the authorized current unexpired PDF; no fabricated default score or private account bypass. Fairness controls hide identity/institution across returned artifacts; generation guard discards stale review responses.
+
+Original-like horizontal recruiter/candidate navigation now integrates Windows 95 panels; overview includes position/KPI strip, fit/trajectory scatter, candidate profiles/contributors/roadmaps, fair controls, sample paired comparison, filters and canonical human action form. Visual evidence saved locally in app/.local/kerjaos-overview.png. Gate details: app/docs/ui/U2-GATE.md.
+
+Remaining explicitly: avatar/photo, persisted assessments/employer control policy, L1 migrations/private bucket/synthetic MFA accounts/live journeys, optional OAuth/email/approved sourcing and full new EN/BM review. Source existence still does not count as live parity. No remote SQL, email, scraper, external inference or deployment. D1 last. Local changes remain uncommitted.
+
+### 5 October 2026 — U3 modern dashboard redesign constructed
+
+READY_FOR_GATE. Viewed all five user-supplied reels in browser. User superseded Windows 95 direction. Implemented shared light/dark sage/cream dashboard design with pastel metrics, rounded bento panels, sidebar/mobile strip, modern sign-in and original branding mark. Removed faux windows/taskbar/clock/drag controls; real collapsible panels remain mounted to preserve drafts. Demo credentials now public synthetic KerjaDemo2026!; normal account authentication unchanged. Theme mapping supports existing Classic/Luna preferences and persists demo changes.
+
+Original modules and real privacy/CSRF/auth gates retained. PRD F10 and IMPLEMENTATION_PLAN U3 updated. Construction performed without tests. Next is one affected frontend gate and browser visual review; no backend/SQL changes in this phase. L1/live parity gaps and full EN/BM remain explicit; D1 deployment last. Local only.
+
+U3 gate initial result: TypeScript and production build passed. Eight affected browser journeys ran once after construction: five passed, three need repair. Entrance opacity caused temporary axe contrast failures; empty pipeline scrolling needed a keyboard-focusable region; an encoding conversion affected talent captions. Repaired these. Rerun only affected desktop accessibility, overview and human-interview journeys, plus final build/typecheck for the changed output. No backend/SQL retesting required.
+
+### 6 October 2026 — U3 modern dashboard gate passed
+
+LOCAL_GATE_PASSED. Foundation TypeScript and production build passed. All eight distinct affected browser journeys passed after targeted repairs. Verified prefilled isolated demos, every candidate tool on mobile, actual recruiter trajectory/fair controls and details, normal-account scoping fixture, draft retention across collapse/navigation, human interview outcome flow fixture, theme persistence, sampled axe accessibility, 390px/200% zoom and reduced motion. Fixed entrance fade contrast, empty scroll-region keyboard access, talent text encoding and theme-switch background transition. No unrelated passed suite repeated.
+
+Desktop light/dark and mobile previews saved in app/.local/kerjaos-modern-*.png. Browser console review returned no error entries. Updated PRD F10, IMPLEMENTATION_PLAN U3, README and active parity documentation; details in app/docs/ui/U3-GATE.md. React component review confirmed mounted draft retention/stable IDs, native dialog focus and non-sensitive appearance storage. No new dependencies.
+
+Remaining: L1 hosted schema/private bucket/synthetic MFA/live integration, avatar, persisted assessments/fair policy, optional provider/sender/OAuth/approved sources and complete EN/BM copy review. No backend/SQL changes, deployment, real mail, scraper or external inference in this UI phase. D1 remains last. Local changes uncommitted.
+
+### 6 October 2026 — U4 blue/violet palette constructed
+
+READY_FOR_GATE. Replaced green/sage primary palette with royal blue #4254D6, indigo navigation and blue/violet accents in shared light/dark CSS and the original K mark. Updated login hero, metric cards, focus/selection, checkboxes, progress and trajectory points across active demo/account views. Layout and workflow code unchanged. PRD/README palette descriptions and U4 checklist updated. No tests during construction; targeted phase-end UI gate next. Existing integration/feature gaps remain open; local only, D1 last.
+
+### 6 October 2026 — U4 palette gate passed
+
+LOCAL_GATE_PASSED. Royal blue/violet palette applied across shared light/dark UI and brand mark. Production build and three existing targeted browser journeys passed; zero sampled axe violations, mobile fit and overview/trajectory/fair-control behaviour retained. Visual login/light/dark review saved in app/.local/kerjaos-blue-*.png. U4 checklist and current PRD/README descriptions updated; gate details in app/docs/ui/U4-GATE.md. No new test cases, backend/SQL changes or unrelated suite runs. Existing live integration/features remain open; deployment stays D1 last. Local only.
+
+### 6 October 2026 — DOC1 product README refresh
+
+DOC_REVIEW_PASSED. Read both requested reference READMEs and rewrote the root KerjaOS README around the current product: branded introduction, problem/feature tables, candidate/recruiter capabilities, demo credentials, blue/violet screenshots, hiring workflow, review/scoring explanation, architecture, stack, PowerShell setup, environment/API map, privacy, validation, roadmap, troubleshooting and documentation links. App README now points to the current root overview while retaining historical notes/source attribution. Three existing invented-data screenshots copied into portable docs/images/ assets.
+
+Reviewed feature claims against active routes, scoring code, configuration, package requirements and existing parity/gate evidence. Verified 44 local file/image references and 25 anchors; all three PowerShell setup blocks parse with zero syntax errors; demo environment settings match the secret-free template. Image validation found JPEG bytes under historical .png filenames; portable copies and README links now use .jpg, with all three JPEGs verified at 1405x790. Git whitespace review passed. No installation, application suite/build, live Supabase query/migration, inference, email, scraper or deployment was needed for this documentation-only task.
+
+README task complete. Remaining product work is unchanged: L1 schema/private bucket/synthetic accounts/MFA/full integration; L2 avatar, persisted assessments/fair policy, concurrency/recovery/retention and full EN/BM/readiness review; optional services retain their activation gates; D1 deployment last. IMPLEMENTATION_PLAN.md DOC1 checklist updated. Local files remain uncommitted.
+
+### 6 October 2026 — U5 exact reel dashboard construction
+
+IN_PROGRESS. Directly viewed Dd7AalkTZPY and the creator-linked public Coterie preview, including Overview, People and Payroll surfaces. Building the selected cream/yellow layout with all visible dashboard element types, using existing recruitment workflows and original assets/code. Original fictional demo portrait generated with the built-in image tool. Payroll/timesheet scope question pending; no financial processing authorized by reference content. Tests NOT_RUN during construction. Next: complete shared elements and demo/real adapters, then one affected phase-end gate. L1/live integration remains open; D1 deployment last.
+
+### 6 October 2026 — Owner-confirmed HR expansion U5/H1
+
+IN_PROGRESS. Owner requested full recruitment + HR management including payroll/timesheets and candidate → company joining → employee dashboard, resolving the earlier question. Constructed cream/yellow bento UI/original portrait/OFL local fonts; recruiter management, employee demo and accepted hire rehearsal; private HR migration and scoped FastAPI adapters. Tasks/time/leave review/manual payroll/CSV/payslip/calendar/directory/offboarding are built with independent HR/payroll MFA grants. React review applied: request/interval cleanup, scope-derived records and appearance-only persisted preferences. Tests NOT_RUN during construction.
+
+Plan separates H1 local gate, hosted activation and H2 statutory/profile/device/benefits/scaling/retention work. No remote SQL, inference, mail, scraping, bank transfer or deployment. Production HR is not yet claimed; D1 last. Next: finish tests/docs then one phase-end gate.
+
+### 6 October 2026 — U5/H1 construction complete
+
+READY_FOR_GATE. Added strict API validation, actual offline PostgreSQL security/transition tests and four browser journeys (joining, employee self service, management/payroll/calendar, normal-account CSRF). Completed setup and original asset/reference mapping docs. Replays recheck current grants/session/employment before returning cached payroll; duplicate UI writes are locked and failed live commands retain an in-memory retry key. Malaysia date boundaries and time/leave/payroll constraints are enforced in DB. No tests were run during construction. Next: one affected phase-end gate, targeted repair only if failures.
+
+U5/H1 gate first results: 12 API cases passed; four exposed a nested datetime import damaged by an edit and are repaired. SQL reached the offboarding checks; an assertion incorrectly expected a payroll grant at aal1, corrected to verify both aal1 denial and aal2 independent staff access. Foundation tsc needs the existing Vite CSS types in the invocation; no TypeScript source errors reported. Only failed/affected checks will rerun. Browser gate follows.
+
+U5/H1 gate: all 12 distinct browser journeys passed after targeted repairs (8 initially, 4 repaired reruns). Fixed export hover contrast, new HR fixture responses and malformed empty-policy fixtures, plus visible punctuation encoding. Visual comparison confirmed cream/yellow layout and reference elements; added gauge ticks, dotted graph guides and horizontal settings. A career preference now survives refresh after joining so polling cannot pull an employee away from other applications. Only this affected career/accessibility journey and final build/typecheck need confirmation. API 16 cases and PostgreSQL 59 assertions remain passed; no SQL/backend changes since those gates.
+
+### 6 October 2026 — U5/H1 local phase passed
+
+LOCAL_GATE_PASSED. KerjaOS now has recruitment plus a local HR baseline: accepted final human hire creates company invitation, candidate joins and defaults to employee dashboard while keeping career/applications; company directory, task/onboarding notifications, timer/time draft/submit/review, leave/review, event calendar, offboarding and reviewed integer-cent MYR payroll draft/approve/issue/CSV/own payslip. Independent live HR/payroll MFA grants, scoped private SQL RPCs, current revocation on replay, optimistic revisions/idempotency/audit and bounded input checks. Payroll staff can read approved time/leave calendar data without leave reasons. Only own issued salary visible to employees; HR/recruiter roles do not inherit company salary access.
+
+Selected cream/yellow/black reel interface now supplies pill navigation, rail/counts, original demo portrait, local OFL Outfit/Inter, dotted thin graph, timer gauge/ticks, dark tasks, accordions, weekly/monthly calendars, selectable/filterable people, roster/profile/three progress meters. Recruitment overview/trajectory/fair controls remain mounted/reachable; secondary HR tabs hide that overview to keep their own layout. Ready employee demo and isolated accepted hire rehearsal added. Career choice survives refresh after joining.
+
+Phase-end evidence: Foundation TypeScript passed; final Vite output JS 446.97 kB / gzip 130.91 kB, CSS 161.90 kB / gzip 28.32 kB. 16 API cases (12 first + 4 repaired), 64 PostgreSQL assertions and 12 distinct browser journeys passed. Browser repairs reran only failures/affected flows; final navigation/meters checked in affected management/trajectory journeys. Added DB payload bounds and approved-time/leave privacy assertions, reran only that SQL gate. No unrelated old backend/SQL suites repeated. Sampled axe zero violations; exact 390px/reduced-motion in browser gate; CUA desktop/people/payroll/light/dark/mobile preview and local Outfit verified, no console error entries. README local references (51) and new gate references verified; screenshot JPEG signatures and Git whitespace passed. Secret env stays ignored.
+
+Portable screenshots saved under docs/images/kerjaos-hr-*.jpg and updated signin image. README/PRD/IMPLEMENTATION_PLAN/PARITY/setup/asset mapping/gate updated. Original fictional portrait uses built-in image generation; exact prompt in U5-ASSETS.md, no commercial template source/media copied. CLI-generated H1 migration remains unapplied remotely. No real mail, scraper, inference, payments, purchase or deployment. Local frontend 5173/backend 8000 restarted with final code; files remain uncommitted.
+
+Left: H1-LIVE + L1 hosted schema/private bucket/synthetic Auth/MFA/grant provisioning/real journeys; L2 avatar/persisted assessments/fair policy/readiness; H2 statutory payroll/entitlements/holidays/overtime, contracts/full profiles/device/benefits/pension, corrections/history, scalable reports/pagination and separately reviewed HR financial retention/export/erasure/offboarding access. Issued payroll is a ledger record, not money paid. D1 deployment remains LAST.
+
+### 6 October 2026 — U6 workspace mode header
+
+IN_PROGRESS. Added shared Management / Recruitment header and separated dashboards in demos/accounts. Both surfaces remain mounted across mode switches to preserve selected pages and drafts; candidate joining/employee career access retained. Accessible native buttons, current-mode marker, BM labels and mobile styling. Tests NOT_RUN during construction. Next: complete round-trip browser coverage and docs, then one frontend phase-end gate. No backend/SQL/deployment changes.
+
+U6 READY_FOR_GATE. Construction and coverage complete; React review checked native keyboard controls, stable mounted trees and in-memory state. Separate recruitment heading avoids a duplicate heading; HR-only navigation is hidden in Recruitment. README mode guide updated. Next: Foundation typecheck/build and 12 affected browser journeys. No tests run during construction.
+
+U6 first gate: typecheck/build passed, eight browser journeys passed. Four failed only the new active mode button contrast (2.12:1); switching, preserved drafts/selection, CSRF and recruitment rendering passed before the accessibility assertion. Corrected active fill to dashboard yellow #FACB3A with dark text. Rerun only those four affected journeys and final CSS build; no backend/SQL tests.
+
+U6 targeted gate: active colour corrected and all four accessibility checks passed; three journeys completed. Human interview journey reached a newly exposed 200% zoom overflow in the mode header at 390px. Allowed the two mode buttons to wrap with bounded flexible widths. Next: only affected zoom/interview and mode-header mobile journeys plus final CSS build.
+
+### 6 October 2026 — U6 local phase passed
+
+LOCAL_GATE_PASSED. Added the shared Management / Recruitment header above both dashboards. Mode buttons are native, indicate the current mode and use dashboard yellow; English/BM labels, light/dark and narrow wrapping. Management and Recruitment are separate visible surfaces with stable mounted state: selected pages, people search/selection, unsaved payroll/recruitment/timesheet drafts survive switching. Employee/candidate career access, scoped live HR permissions and account career preference on refresh retained. Session sign-out still resets demo data; no sensitive storage added.
+
+Phase-end TypeScript/build passed. Final output JS 448.03 kB / gzip 131.14 kB; CSS 163.05 kB / gzip 28.49 kB. 12 distinct affected browser journeys passed: workspace modes 1, HR 4, desktop demo 3, talent overview 2, foundation 1, interviews 1. Initial eight passed; four exposed active contrast, repaired and rerun. Three then passed; interview exposed 200% zoom header overflow, repaired wrapping and reran only interview/mode-header checks. Sampled axe zero violations, 390px/light/dark/reduced-motion and 200% zoom checks passed. No backend/SQL suites repeated.
+
+Implementation checklist, README mode guide/current management image and app/docs/ui/U6-GATE.md updated. Browser visually confirmed both separate dashboards; invented-data screenshots saved as docs/images/kerjaos-workspace-modes.jpg and kerjaos-recruitment-mode.jpg. Local preview stays open. No backend/schema/grant/service/deployment changes. H1-LIVE/H2/L1/L2 remain open and D1 remains last; files remain uncommitted.
+
+### 6 October 2026 — U7 overview / floating assistant
+
+IN_PROGRESS. Added Main Overview mode with current scoped HR/recruitment snapshots, ongoing/phase metrics, review queues and upcoming company events; direct HR queue navigation and recruitment entry. Recruiter demo starts on Main Overview; employee default management remains. Added floating assistant launcher/nonmodal chatbox, Escape and focus return, isolated demo messages and existing authorized live progress API with read-only current workspace HR summaries. Snapshots clear on session end; no salary totals/private leave reasons included in combined overview. Construction continues for styles, coverage and docs. Tests NOT_RUN; no backend/SQL/service/deployment changes.
+
+U7 READY_FOR_GATE. Construction complete: responsive cream/yellow bento overview, separate review queues, payroll period/loaded cohort labels, visible no-data states and floating session-only chat. Completed four browser journeys for propagated task/payroll/job statistics, direct queue navigation, cross-mode conversation, Escape/focus, demo read-only/no writes, own employee limits and live scoped progress with CSRF/unavailable HR. React review checked stable snapshot callbacks, mounted mode state, assistant option request cleanup/session clearing and current data replies. No tests during construction. Next: one frontend phase-end typecheck/build/affected browser gate; only failed/affected checks rerun after repairs.
+
+### 6 October 2026 — U7 local phase passed
+
+LOCAL_GATE_PASSED. Added Main Overview to the shared header and made it the recruiter demo entry. Combines scoped loaded recruitment/HR metrics, ongoing application phase bars, resume/decision/time/leave/overdue-onboarding/payroll queues and upcoming company events, with direct workspace links. Current tasks, payroll actions and job changes propagate through stable snapshot callbacks; mode/draft state remains mounted. Unavailable data is labelled, recruitment loaded/total and payroll month are explicit. Employee summaries are own-scope; payroll queue requires independent payroll permission; no salary amounts/leave reasons/raw reports/candidate names in combined statistics.
+
+Floating bottom-right icon opens a nonmodal chatbox across signed-in modes. Demo bounded in-memory conversation and current session summaries; no private writes/external requests. Live assistant uses existing selected candidate/assigned-role progress endpoints and CSRF; local authorized HR summary avoids an external model. Close/Escape returns launcher focus; conversation/draft survives reopening and mode switches. Account sign-out clears snapshots and removes assistant. Native EN/BM controls, request cleanup and mobile/light/dark/zoom/reduced-motion layouts reviewed.
+
+Phase-end gate passed first run: Foundation TypeScript, production build, 18 distinct affected browser journeys (new overview/assistant 4 plus modes 1, HR 4, desktop demo 3, talent 2, foundation 1, interviews 1, modern workspace 1, progress chat 1). Sampled axe zero violations; exact 390px and 200% zoom with opened assistant, plus existing human interview flow passed. Build JS 465.10 kB / gzip 136.30 kB; CSS 168.67 kB / gzip 29.45 kB. No tests during construction, no unrelated backend/SQL runs and no failed reruns needed.
+
+CUA reviewed both new features at local 5173; screenshots saved as docs/images/kerjaos-main-overview.jpg and kerjaos-floating-assistant.jpg. Checklist, README/PRD and app/docs/ui/U7-GATE.md updated; local preview retained. No backend/schema/grant/service/model/deployment changes; files remain uncommitted. Overview is a loaded cohort snapshot, not realtime/full-company reporting. H1-LIVE/H2/L1/L2 remain open; D1 deployment stays LAST.

@@ -22,7 +22,7 @@ def me(user: Principal = Depends(require_user)):
 
 @router.get("/jobs")
 def jobs():
-    return gateway.table("m1_jobs", token=None, params={"published": "eq.true", "select": "id,title,department,employer_id", "limit": 100})
+    return gateway.rpc("m14_public_jobs", token=None)
 
 
 @router.get("/applications")

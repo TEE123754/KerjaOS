@@ -1,7 +1,10 @@
 import json
 import re
 from typing import Dict, Any, List, Optional
-from openai import OpenAI
+try:
+    from openai import OpenAI
+except ImportError:
+    OpenAI = None  # Offline helpers work in the lean production environment.
 from app.config import settings
 
 CAPACITY_ERROR_PATTERNS = (

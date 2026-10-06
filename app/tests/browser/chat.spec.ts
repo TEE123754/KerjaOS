@@ -4,7 +4,14 @@ test('progress assistant selects owned application, denies cross-candidate promp
  const rows=[{id:AX,title:'Role X',stage:'P3',status:'under_review',next_action:'complete_quiz'},{id:AY,title:'Role Y',stage:'P4',status:'on_hold',next_action:'await_background_explanation'}];
  async function attach(page:Page){let email='';await page.route('**/api/v1/**',async route=>{
   const req=route.request(),url=new URL(req.url()),path=url.pathname,hm=email.startsWith('hm');let data:any;let status=200;
-  if(path.includes('/interviews/')) data=path.endsWith('/context')?{applications:[],slots:[],bookings:[],interviewers:[],email_delivery:'disabled'}:[];
+  if(path.endsWith('/hr/context'))data={companies:[],employees:[],mine:[],tasks:[],times:[],leaves:[],payroll:[],events:[],hr:false,payroll_admin:false};
+  else if(path.includes('/recruiting/'))data=path.endsWith('/context')?{jobs:[],employers:[]}:path.endsWith('/dashboard')?{total:0,applications:[]}:[];
+  else if(path.endsWith('/profile'))data={name:'Fixture',locale:'en'};
+  else if(path.includes('/tracker/'))data=[];
+  else if(path.includes('/analytics/'))data={};
+  else if(path.includes('/reminders'))data=[];
+  else if(path.includes('/privacy/'))data={};
+  else if(path.includes('/interviews/')) data=path.endsWith('/context')?{applications:[],slots:[],bookings:[],interviewers:[],email_delivery:'disabled'}:[];
     else if(path.includes('/discover/'))data=path.endsWith('/progress')?{enabled:false,sources:[]}:[];
   else if(path.includes('/identity/'))data=path.endsWith('/policy')?{version:'identity-v1',text:{en:'Fixture',ms:'Sintetik'},real_capture_enabled:false}:[];
   else if(path.includes('/background/'))data=path.endsWith('/policy')?{checks:[]}:[];
@@ -26,7 +33,7 @@ test('progress assistant selects owned application, denies cross-candidate promp
   }else throw Error('Unexpected M6 fixture route '+path);
   await route.fulfill({status,json:data});
  });}
- async function login(page:Page,email:string){await attach(page);await page.goto('/foundation');await page.getByLabel('Email',{exact:true}).fill(email);await page.getByLabel('Password',{exact:true}).fill('fixture-password');await page.getByRole('button',{name:'Sign in',exact:true}).click();await expect(page.getByRole('button',{name:'Refresh',exact:true})).toBeVisible();}
+ async function login(page:Page,email:string){await attach(page);await page.goto('/foundation');await page.getByLabel('Email',{exact:true}).fill(email);await page.getByLabel('Password',{exact:true}).fill('fixture-password');await page.getByRole('button',{name:'Sign in',exact:true}).click();await expect(page.getByRole('button',{name:'Refresh',exact:true})).toBeVisible();await page.getByRole('navigation',{name:'Workspace navigation'}).getByRole('button',{name:'Assistant',exact:true}).click();}
  const ca=await browser.newContext(),ch=await browser.newContext(),a=await ca.newPage(),hm=await ch.newPage();await login(a,'a@example.test');const c=a.getByRole('region',{name:'Progress assistant',exact:true});
  await c.getByRole('button',{name:'Check progress',exact:true}).click();await expect(c).toContainText('Select an application');
  await c.getByRole('combobox',{name:'Progress selection',exact:true}).selectOption(AY);await c.getByRole('button',{name:'Check progress',exact:true}).click();await expect(c).toContainText('P4 / on_hold');await expect(c.getByRole('link',{name:AY,exact:true})).toHaveAttribute('href','/foundation?application='+AY);

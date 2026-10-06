@@ -1,5 +1,6 @@
 from functools import lru_cache
-from pydantic import field_validator
+from typing import Literal
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -9,6 +10,7 @@ class FoundationSettings(BaseSettings):
     PRIVACY_CONTACT: str = ""
     TRACKER_ENABLED: bool = True
     ANALYTICS_ENABLED: bool = True
+    DEMO_PREVIEW_ENABLED: bool = False
     REMINDER_WORKER_ENABLED: bool = False
     REMINDER_SENDER: str = "disabled"
     REMINDER_EMAIL_APPROVED: bool = False
@@ -35,6 +37,10 @@ class FoundationSettings(BaseSettings):
     SUPABASE_URL: str = ""
     SUPABASE_PUBLISHABLE_KEY: str = ""
     SUPABASE_SERVICE_ROLE_KEY: str = ""
+    SUPABASE_SECRET_KEY: str = ""
+    # Auth validates tokens through Supabase /user; this URL is configuration
+    # metadata, not a replacement for revocation/session verification.
+    SUPABASE_JWKS_URL: str = ""
     SESSION_ENCRYPTION_KEY: str = ""
     DOCUMENT_ENCRYPTION_KEY: str = ""
     COOKIE_SECURE: bool = True
@@ -49,9 +55,29 @@ class FoundationSettings(BaseSettings):
     JOB_DISCOVERY_ENABLED: bool = False
     SCRAPLING_ENABLED: bool = False
     EXTERNAL_LLM_ENABLED: bool = False
+    LLM_PROVIDER: Literal["openrouter", "morpheus"] = "openrouter"
+    ALLOW_PAID_PROVIDERS: bool = False
+    MORPHEUS_API_KEY: str = ""
+    MORPHEUS_BASE_URL: str = "https://api.mor.org/api/v1"
+    MORPHEUS_MODEL: Literal["gpt-oss-120b"] = "gpt-oss-120b"
+    MORPHEUS_MAX_TOKENS: int = Field(default=256, ge=32, le=256)
+    MORPHEUS_TIMEOUT_SECONDS: int = Field(default=15, ge=1, le=30)
     OPENROUTER_API_KEY: str = ''
     M6_OPENROUTER_PROVIDER: str = ''
     M6_EXTERNAL_PRIVACY_APPROVED: bool = False
+
+    @model_validator(mode="after")
+    def modern_server_key_alias(self):
+        if not self.SUPABASE_SERVICE_ROLE_KEY:
+            self.SUPABASE_SERVICE_ROLE_KEY = self.SUPABASE_SECRET_KEY
+        return self
+
+    @field_validator("MORPHEUS_BASE_URL")
+    @classmethod
+    def morpheus_endpoint(cls, value):
+        if value.rstrip("/") != "https://api.mor.org/api/v1":
+            raise ValueError("Use the approved Morpheus HTTPS endpoint")
+        return value.rstrip("/")
 
     @field_validator("SUPABASE_URL")
     @classmethod

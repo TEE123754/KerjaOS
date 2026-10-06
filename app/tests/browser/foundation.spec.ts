@@ -11,7 +11,8 @@ test('secure workspace removes legacy browser identity and displays scoped appli
     const path = new URL(route.request().url()).pathname;
     let data: unknown;
     let status = 200;
-    if(path.includes('/interviews/')) data=path.endsWith('/context')?{applications:[],slots:[],bookings:[],interviewers:[],email_delivery:'disabled'}:[];
+    if(path.endsWith('/hr/context')) data={companies:[],employees:[],mine:[],tasks:[],times:[],leaves:[],payroll:[],events:[],hr:false,payroll_admin:false};
+    else if(path.includes('/interviews/')) data=path.endsWith('/context')?{applications:[],slots:[],bookings:[],interviewers:[],email_delivery:'disabled'}:[];
     else if(path.includes('/discover/')) data=path.endsWith('/progress')?{enabled:false,sources:[]}:[];
     else if(path.includes('/chat/')) data=[];
     else if(path.includes('/background/')) data=path.endsWith('/policy')?{official_provider:'not_configured',real_capture_enabled:false,checks:[]}:[];

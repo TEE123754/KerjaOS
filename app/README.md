@@ -1,3 +1,11 @@
+# Application implementation history
+
+For the current KerjaOS product overview, screenshots, demo accounts and local startup instructions, use the [root README](../README.md). The phase notes and original source documentation below are preserved as implementation history; current readiness and remaining work are tracked in the [implementation plan](../IMPLEMENTATION_PLAN.md) and [progress log](../PROGRESS.md).
+
+# L1 local configuration — 5 October 2026
+
+Supplied Supabase/Morpheus keys are configured only in ignored backend/.env. Bounded gpt-oss-120b public-FAQ adapter and service credential checks passed; local frontend/backend start. Supabase app schema/private bucket still need migrations and synthetic accounts; no deployment. [Setup and remaining work](docs/l1/SETUP.md) · [configuration gate](docs/l1/GATE.md). Original phase notes below are historical evidence.
+
 # M12 owner reminders
 
 Owned in-app tasks/follow-up/preparation, UTC/IANA dates, revisioned history and preferences, bounded disabled/fixture/verified SMTP worker, durable dispatch/replay protection and scoped privacy cleanup. Email/worker disabled by default. [Setup/demo/retention/rollback](docs/m12/SETUP.md) · [gate](docs/m12/GATE.md).
@@ -16,7 +24,7 @@ Active stack: React/Vite → Vercel, FastAPI → Railway, Supabase Postgres/Auth
 
 # KerjaOS recruitment workspace — provisional brand
 
-M8 adds original Classic/Luna-inspired desktop themes, taskbar/windows and guarded human interviews: confirmation/reschedule/cancellation, private interviewer scorecards, in-app reminders, revisioned ICS and separate offer/acceptance/hire. No paid service or outbound sender is enabled. [M8 setup/demo](docs/m8/SETUP.md) · [brand review](docs/m8/BRAND.md) · [gate](docs/m8/GATE.md). Original product source and attribution are retained below.
+M8 originally added desktop themes and guarded human interviews (U3 has superseded the retro visuals): confirmation/reschedule/cancellation, private interviewer scorecards, in-app reminders, revisioned ICS and separate offer/acceptance/hire. No paid service or outbound sender is enabled. [M8 setup/demo](docs/m8/SETUP.md) · [brand review](docs/m8/BRAND.md) · [gate](docs/m8/GATE.md). Original product source and attribution are retained below.
 
 ## M7 Discover and external applications
 
@@ -1621,3 +1629,5 @@ After local setup, run through the full pipeline:
   </blockquote>
 </div>
 
+
+U3 now provides the active modern light/dark dashboard, rounded blue/violet cards and compact responsive navigation, based on five user-supplied reel references. Prefilled demos remain isolated; the shared account panels preserve drafts. [U3 gate](docs/ui/U3-GATE.md).

@@ -28,3 +28,4 @@ app/backend/data/recruiting_db.json
 app/backend/uploads/
 app/backend/src/imports/
 app/supabase/.temp/
+.local/

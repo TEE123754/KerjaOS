@@ -18,6 +18,9 @@ from .release import router as release_router
 from .tracker import router as tracker_router
 from .analytics import router as analytics_router
 from .reminders import router as reminder_router
+from .recruiting import router as recruiting_router
+from .recruiting import profile_router
+from .hr import router as hr_router
 
 
 def create_app():
@@ -35,7 +38,7 @@ def create_app():
     async def security_boundary(request: Request, call_next):
         path = request.url.path
         if request.method in {"POST", "PATCH"}:
-            upload = path.endswith('/resume') or path=='/api/v1/tracker/resumes/upload' or (path.startswith(('/api/v1/identity/cases/','/api/v1/background/cases/')) and path.endswith('/document'))
+            upload = path.endswith('/resume') or path in ('/api/v1/tracker/resumes/upload','/api/v1/profile/resume-preview') or (path.startswith(('/api/v1/identity/cases/','/api/v1/background/cases/')) and path.endswith('/document'))
             limit = cfg.MAX_UPLOAD_BYTES + 1024 * 1024 if upload else 64 * 1024
             declared = request.headers.get("content-length")
             if declared and (not declared.isdigit() or int(declared) > limit):
@@ -89,6 +92,9 @@ def create_app():
     app.include_router(analytics_router, prefix="/api/v1")
 
     app.include_router(reminder_router, prefix="/api/v1")
+    app.include_router(recruiting_router, prefix="/api/v1")
+    app.include_router(profile_router, prefix="/api/v1")
+    app.include_router(hr_router, prefix="/api/v1")
 
     @app.get("/healthz")
     def health():

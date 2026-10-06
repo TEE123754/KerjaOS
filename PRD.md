@@ -1,6 +1,6 @@
 # KerjaOS — Product Requirements Document
 
-Version: 1.1 · Prepared: 2 October 2026 · Updated: 5 October 2026 (Asia/Kuala_Lumpur) · Status: M1–M12 local gates passed; hosted release deferred; F11–F13 locally implemented; SMTP/worker activation deferred. Local-first remaining order: L1 Supabase integration → L2 local readiness → D1 final deployment.
+Version: 1.3 · Prepared: 2 October 2026 · Updated: 6 October 2026 (Asia/Kuala_Lumpur) · Status: M1–M12 local gates passed; hosted release deferred; F11–F13 locally implemented; SMTP/worker activation deferred. Local-first remaining order: L1 Supabase integration → L2 local readiness → D1 final deployment.
 
 Inputs: [Kerja.md](Kerja.md), the original feature request, and a read-only review of [404-Brain-Not-Found-Recruiter](https://github.com/Xiaoming0313883/404-Brain-Not-Found-Recruiter) at commit `be3bf1de3451d266d923089785c9479ce6e4add3`. Keep the existing application and agent architecture. This document specifies the upgrade; it does not claim that the features below have been built or that the product has legal approval.
 
@@ -8,16 +8,11 @@ Related documents: [Implementation plan](IMPLEMENTATION_PLAN.md) · [Living prog
 
 ## 1. Product and branding
 
-**Recommended working name: KerjaOS.** A Malaysian recruitment workspace with a retro desktop interface, transparent application tracking, practice assessments, and human-controlled hiring decisions. “OS” fits the desktop metaphor and can extend to employer workflows. Keep the 404-to-200 story in launch copy: “From brain not found to opportunity found.” Suggested tagline: **Your next opportunity, in progress.**
+**Name: KerjaOS.** A Malaysian recruitment and company HR workspace with transparent application tracking, practice assessments and human-controlled hiring decisions. Tagline: **Your next opportunity, in progress.** Product copy uses KerjaOS throughout.
 
-| Name | Strength | Tradeoff |
-| --- | --- | --- |
-| **KerjaOS** | Short, contains Kerja, fits the desktop and recruitment workspace | Explain the recruitment purpose in the tagline |
-| Kerja.exe | Memorable and strongly retro | Can sound like a downloadable executable |
-| KerjaNext | Clear career progression and flexible branding | Less distinctive retro identity |
-| Kerja95 | Immediately signals the retro direction | Ties the brand to one visual era |
+The 5 October 2026 UI direction supersedes the original Windows 95/XP request: a modern dashboard informed by five user-supplied Instagram reels, with a cream/yellow canvas, black pill navigation, rounded bento panels, weekly/monthly calendars, light/dark themes and restrained micro-interactions. Keep original KerjaOS assets; visual references do not authorize copying commercial template code or media. No paid template, new UI dependency or external font service is required. Local prototype work proceeds while hosted deployment remains D1.
 
-The name is a recommendation, not a trademark or domain clearance. Before public rebranding, search [MyIPO](https://www.myipo.gov.my/), business names, domains, and social handles; record the result in M8. A paid domain is optional and excluded from the zero-cost plan. Use your own logo, mascot, wallpaper and iconography. Refer to themes in the product as **Classic** and **Luna-inspired**; do not imply Microsoft affiliation or reuse its logos or character assets.
+The name has not been cleared as a trademark or domain. Public-release branding checks remain part of readiness; a paid domain is optional and excluded from the zero-cost plan.
 
 Audience: Malaysian candidates and small hiring teams, initially English and Bahasa Malaysia. Non-MyKad applicants need an alternative document/manual route. Pilot target: one employer, 20 candidates, up to five internal roles, and a small curated set of external job sources. These are proposed capacity limits, not tested guarantees.
 
@@ -29,7 +24,7 @@ AI recommends and assists. A verified human makes every shortlist, rejection, of
 
 The free release must remain useful with no external AI, no paid screening provider and no email service: deterministic resume matching, authored quizzes, manual verification, in-app notifications, calendar downloads, and curated job feeds must work independently.
 
-Out of scope for this release: payroll, payments, automatic offer letters, autonomous hiring/rejection, certified eKYC claims, direct access to police/BNM databases, bypassing website access controls, bulk social profile harvesting, and predicting hire probability without validated outcome data.
+Out of scope for this release: bank payments, automatic offer letters, autonomous hiring/rejection, certified eKYC claims, direct access to police/BNM databases, bypassing website access controls, bulk social profile harvesting, and predicting hire probability without validated outcome data.
 
 ## 3. What exists and what needs correction
 
@@ -37,7 +32,7 @@ The local workspace initially contains only `Kerja.md`; application source was i
 
 | Repository observation | Consequence for implementation |
 | --- | --- |
-| React 18.3.1, Vite 6.4.2, Tailwind 4.1.12, Radix and MUI are already declared in [package.json](https://github.com/Xiaoming0313883/404-Brain-Not-Found-Recruiter/blob/be3bf1de3451d266d923089785c9479ce6e4add3/package.json) | Retain React/Vite; do not rewrite into Next.js. Introduce retro tokens, then remove MUI only after replacing its usages. |
+| React 18.3.1, Vite 6.4.2, Tailwind 4.1.12, Radix and MUI are already declared in [package.json](https://github.com/Xiaoming0313883/404-Brain-Not-Found-Recruiter/blob/be3bf1de3451d266d923089785c9479ce6e4add3/package.json) | Retain React/Vite; do not rewrite into Next.js. Introduce shared modern dashboard tokens, then remove MUI only after replacing its usages. |
 | `public.applications` already exists, and candidate payloads also contain application arrays in [schema](https://github.com/Xiaoming0313883/404-Brain-Not-Found-Recruiter/blob/be3bf1de3451d266d923089785c9479ce6e4add3/backend/supabase_schema.sql) and [candidate routes](https://github.com/Xiaoming0313883/404-Brain-Not-Found-Recruiter/blob/be3bf1de3451d266d923089785c9479ce6e4add3/backend/app/routes/candidates.py) | Correct the stale “single application” assumption in Kerja.md: multi-apply is partially implemented. Normalize and harden it. |
 | `build_application_id()` returns `position-{position_id}`, while persistence upserts by application ID and deduplicates IDs in [database.py](https://github.com/Xiaoming0313883/404-Brain-Not-Found-Recruiter/blob/be3bf1de3451d266d923089785c9479ce6e4add3/backend/app/database.py) | Two candidates applying to one job can collide in normalized rows. Replace with globally unique IDs; reconstruct from candidate payloads, not only the potentially overwritten table. This is a code-derived risk; live data loss was not verified. |
 | `load_db()` loads legacy dictionaries, `save_db()` writes batches, and `sync_current_application()` copies application fields back to the candidate | Replace broad mutation with application-scoped repositories and transactions; prevent one job from overwriting another job's answers, decisions or interview. |
@@ -207,13 +202,15 @@ Final scorecard contains job-rubric evidence and interviewer decision; `hired` r
 
 **Acceptance:** Two users cannot book the same interviewer slot. A rejection/withdrawal cancels pending scheduling tasks. Rescheduling updates the invitation version. A shortlisted candidate is not marked hired before the interview outcome.
 
-### F10 — Retro UI and localization
+### F10 — Modern dashboard UI and localization
 
-Keep Radix accessibility primitives and Tailwind layout. Build CSS token themes inspired by [98.css](https://github.com/jdan/98.css) and [XP.css](https://github.com/botoxparty/XP.css); review bundled assets/fonts before inclusion and use original/appropriately licensed assets. Classic is the default, Luna-inspired is optional. Desktop taskbar windows include My Applications, Discover, Practice, Help, Profile and Privacy.
+Use the existing React/Vite/TypeScript stack and shared CSS tokens with Lucide icons. The active `/foundation` route, candidate/recruiter demos and authenticated workflows use the same light/dark system. Desktop uses compact side navigation; mobile uses a scrollable navigation strip and stacked cards. The overview retains position selection, genuine assessed fit/trajectory data, fair hiring controls and the candidate pipeline. Missing scores stay unassessed.
 
-`react-rnd` can provide optional drag/resize after core flows work; include keyboard and maximize/reset controls. Mobile uses normal full-width panels, not forced desktop dragging. Close/minimize never loses a quiz or form silently. EN/BM strings use react-i18next; language/theme settings may use localStorage. Consent and outcome wording must be reviewed in both languages.
+Replace desktop window chrome, taskbar, artificial clock and drag/resize controls with normal navigation and collapsible workspace panels. Collapsing or switching a panel retains unsent drafts. Appearance preferences may use localStorage; sensitive data remains outside browser persistence. Map existing Classic/Luna appearance preferences to light/dark. Keep prefilled isolated candidate/recruiter demos, normal account login, recovery, signup, OAuth and MFA flows.
 
-**Acceptance:** Keyboard-only use, readable focus/contrast, zoom, reduced motion, screen-reader stage labels and touch layouts work. Use a proposed WCAG 2.2 AA target; retro visuals do not justify unreadable text or tiny buttons. Remove MUI after usage inventory and equivalent replacements pass the phase gate.
+**Acceptance:** All current feature entries remain reachable. Keyboard use, focus/contrast, 200% zoom, reduced motion, screen-reader labels and 390px touch layouts work. Theme persists on return to sign-in/reload. Maintain the WCAG 2.2 AA target; full EN/BM copy review remains L2-05. Build once the UI phase is constructed; run one affected phase gate and rerun only failed checks after repairs.
+
+Visual sources: [Dashboard V3](https://www.instagram.com/reel/Ddq_KtoTzhP/), [Admin V7](https://www.instagram.com/reel/Dd31mzgzt0p/), [Dashboard V8](https://www.instagram.com/reel/Dd_j23tzrLt/), [green bento animation](https://www.instagram.com/reel/DeHGjlZPIHF/), [cream bento animation](https://www.instagram.com/reel/Dd7AalkTZPY/). Layouts were viewed in the browser; captions and commercial links are reference material only.
 
 ### F11 — Unified tracker, resume library and company workspace (M10 locally implemented)
 
@@ -235,7 +232,7 @@ M12 local affected gate passed on 5 October 2026 (app/docs/m12/GATE.md): owner-o
 
 | Layer | Selected stack | Reason / limit |
 | --- | --- | --- |
-| Frontend | Existing React 18, Vite, TypeScript, Tailwind 4, Radix, react-router; react-i18next; retro CSS tokens | Reuse existing components and routing; no framework rewrite |
+| Frontend | Existing React 18, Vite, TypeScript, Tailwind 4, Radix, react-router; react-i18next; shared modern light/dark CSS tokens | Reuse existing components and routing; no framework rewrite |
 | Backend | Existing Python/FastAPI, Pydantic, Uvicorn; LangGraph graph and registered tools | New application services and provider adapters wrap existing agents |
 | Hosting | Vercel frontend; Railway API | Personal free demo only where eligible; compute measured and capped |
 | Data | Supabase Postgres, Auth, private Storage; SQL migrations; psycopg for transactional repository operations | Ownership, tenant isolation, unique IDs and audited transactions |
@@ -389,3 +386,24 @@ Release gates are M1 security/data foundation, M2 isolated applications/state ma
 
 All other defaults in this PRD are sufficient to begin M1 without waiting on optional provider or branding integrations. Real sensitive-data processing and a commercial release must respect their explicit gates.
 
+
+
+## 5 October 2026 — local provider configuration update
+
+Owner supplied Supabase/Morpheus credentials and authorized selecting an inexpensive working model. Use pinned gpt-oss-120b for the public-FAQ variant selector only, with existing deterministic progress/decision boundaries. Official listed rates: $0.07/$0.28 per million input/output tokens; credit-funded inference is a narrow exception to the original free-only requirement. No purchase or other paid integration is authorized. Keys remain in ignored local env. Configuration slice passed; Supabase app migrations/private bucket/accounts, full L1/L2 and final D1 deployment remain pending. See app/docs/l1/SETUP.md and GATE.md.
+
+## 15. 6 October 2026 — Full HR expansion (U5/H1)
+
+Owner confirmed recruitment and employee management including payroll/timesheets. Payroll is now in scope. A canonical human-finalized hire with candidate-accepted offer creates a company invitation; joining opens the employee dashboard by default. Other applications and career tools remain available. Applying, shortlisting or an unfinished offer cannot grant employee access.
+
+H1 local baseline: company directory/filter/selection/profile, tasks/onboarding, event calendar, timer/draft/submit time, HR review of other employees' time/leave, offboarding, manually reviewed MYR payroll draft/approved/issued ledger, month calendar, CSV and own issued payslip download. Distinct operator-provisioned HR/payroll grants require live MFA; recruitment roles do not inherit salary access. Checked private RPCs enforce company/owner/session/grant/revision/idempotency independently of the UI. Invented in-memory demos include employee and accepted hire rehearsal.
+
+The selected reel/public preview define pill navigation, cream/yellow/black palette, Outfit/Inter fonts, segmented rail, photo card, thin bar graph, circular timer, dark task panel, accordions, directory and monthly payroll layout. Original code/assets preserve keyboard/mobile/dark/reduced-motion and recruitment trajectory/fair controls.
+
+H2 production work remains: statutory payroll/entitlements, contracts/signatures, full profile/device/benefits/pension records, salary corrections/history, pagination/reporting and employment/financial retention/export/erasure policy. H1 calendar-day leave is not statutory entitlement. Issued records do not send or confirm bank payment; no bank details/tax IDs/medical evidence are collected. M9 recruitment erasure is not HR retention: review that policy before a real employee pilot. Hosted migrations/accounts/MFA/grants remain L1; deployment remains D1 last.
+
+### U7 — Shared Main Overview and floating assistant (6 October 2026)
+
+The workspace header offers Main Overview, Management and Recruitment. Main Overview combines currently authorized loaded recruitment/HR data for a quick glance: active roles, ongoing application phases, active employees/joining, onboarding, upcoming company events and queues for resume/human decisions/time/leave/overdue tasks/payroll. Queue links open existing tools while preserving dashboard drafts. Loaded cohort/total, company and payroll period are explicit; unavailable data is not converted into fabricated statistics. No salary amounts or sensitive evidence appear in combined statistics; employee scope and independent payroll permissions apply.
+
+A floating icon opens a nonmodal chatbox across signed-in modes, with native controls, Escape/focus return and responsive light/dark layouts. Demos use bounded in-memory current-session conversation and summaries. Accounts reuse the authorized progress assistant and locally summarize current permitted HR records. The assistant is read-only; it does not approve payroll or make employment decisions. No new external model/service, realtime reporting or deployment was activated. Local U7 gate passed; existing H1-LIVE/H2/L1/L2/D1 work remains separate.

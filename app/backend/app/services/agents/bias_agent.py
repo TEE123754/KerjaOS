@@ -36,6 +36,9 @@ def _ranking_badge(rank_value: Optional[int]) -> str:
 def _cache_ranking_result(result: Dict[str, Any]) -> None:
     if not result.get("institution_name"):
         return
+    if local_only:
+        return {'institution_name': school_name, 'ranking_status': 'unknown', 'rank_value': None, 'confidence': 0, 'reason': 'No local CSV match; no external lookup performed.'}
+
     try:
         from app.database import get_supabase_client
 
@@ -142,6 +145,8 @@ def _load_qs_rankings() -> Dict[str, Dict[str, Any]]:
     csv_path = os.path.join(base_dir, "2026 QS World University Rankings.csv")
     
     if not os.path.exists(csv_path):
+        csv_path = os.path.join(os.path.dirname(base_dir), "2026 QS World University Rankings.csv")
+    if not os.path.exists(csv_path):
         # fallback to standard qs_rankings.csv
         csv_path = os.path.join(base_dir, "data", "qs_rankings.csv")
         if not os.path.exists(csv_path):
@@ -217,7 +222,7 @@ def lookup_qs_rank_from_csv(school_name: str) -> Optional[int]:
     details = lookup_qs_rank_details(school_name)
     return details["rank"] if details else None
 
-def fetch_university_ranking(school_name: str) -> Dict[str, Any]:
+def fetch_university_ranking(school_name: str, local_only: bool = False) -> Dict[str, Any]:
     if not school_name:
         return {
             "institution_name": "",
@@ -244,6 +249,9 @@ def fetch_university_ranking(school_name: str) -> Dict[str, Any]:
             },
             "reason": f"Found in QS Rankings CSV with rank {rank}.",
         }
+
+    if local_only:
+        return {'institution_name': school_name, 'ranking_status': 'unknown', 'rank_value': None, 'confidence': 0, 'reason': 'No local CSV match; no external lookup performed.'}
 
     try:
         from app.database import get_supabase_client
@@ -300,7 +308,7 @@ def _flatten_text(value: Any) -> str:
     return str(value or "")
 
 
-def _add_indicator(indicators: List[Dict[str, Any]], seen: set[str], original: str, indicator_type: str, category: str, score: int, source: str) -> None:
+def _add_indicator(indicators: List[Dict[str, Any]], seen: set[str], original: str, indicator_type: str, category: str, score: int, source: str, local_only: bool = False) -> None:
     cleaned = " ".join(str(original or "").split())
     if not cleaned:
         return
@@ -308,7 +316,7 @@ def _add_indicator(indicators: List[Dict[str, Any]], seen: set[str], original: s
     if key in seen:
         return
     seen.add(key)
-    ranking = fetch_university_ranking(cleaned) if indicator_type == "university" else {
+    ranking = fetch_university_ranking(cleaned, local_only=local_only) if indicator_type == "university" else {
         "ranking_status": "not_applicable",
         "rank_value": None,
         "ranking_source": "",
@@ -339,7 +347,7 @@ def _scan_text_for_indicators(text: str, source: str, indicators: List[Dict[str,
     return
 
 
-def _rule_based_analysis(candidate_profile: Dict[str, Any], resume_text: str = "") -> Dict[str, Any]:
+def _rule_based_analysis(candidate_profile: Dict[str, Any], resume_text: str = "", local_only: bool = False) -> Dict[str, Any]:
     indicators: List[Dict[str, Any]] = []
     seen: set[str] = set()
 
@@ -348,14 +356,14 @@ def _rule_based_analysis(candidate_profile: Dict[str, Any], resume_text: str = "
             school = edu.get("school") or edu.get("institution") or ""
             if school and not any(item["original"].lower() == str(school).lower() for item in indicators):
                 category = "Education Provider"
-                _add_indicator(indicators, seen, school, "university", category, 0, "education")
+                _add_indicator(indicators, seen, school, "university", category, 0, "education", local_only=local_only)
 
     for exp in candidate_profile.get("experiences") or []:
         if isinstance(exp, dict):
             company = exp.get("company") or exp.get("employer") or ""
             if company and not any(item["original"].lower() == str(company).lower() for item in indicators):
                 category = "Startup Experience" if re.search(r"startup|founder|co-founder", _flatten_text(exp), re.I) else "Employer Experience"
-                _add_indicator(indicators, seen, company, "employer", category, 0, "experience")
+                _add_indicator(indicators, seen, company, "employer", category, 0, "experience", local_only=local_only)
 
     scored = [item.get("prestige_score", 0) for item in indicators if item.get("prestige_score")]
     prestige_score = round(sum(scored) / len(scored)) if scored else 0

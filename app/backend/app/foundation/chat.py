@@ -8,7 +8,8 @@ from .auth import Principal,require_user,require_write
 from .gateway import gateway
 from .config import get_settings
 from .chat_tools import invoke,ToolArguments
-from .chat_providers import wording_provider,Wording
+from .chat_providers import Wording
+from .morpheus_provider import configured_wording_provider as wording_provider
 router=APIRouter(prefix='/chat',tags=['Authorized progress assistant'])
 FAQ={
  'help':{'en':['I can show your application progress or explain privacy, practice, background review and interview scheduling. Select an application for progress.','Select an application to view progress. You can also ask about privacy, practice, background review or interviews.'], 'ms':['Saya boleh menunjukkan kemajuan permohonan atau menerangkan privasi, latihan, semakan latar belakang dan penjadualan temu duga. Pilih permohonan untuk kemajuan.','Pilih permohonan untuk melihat kemajuan. Anda juga boleh bertanya tentang privasi, latihan, semakan latar belakang atau temu duga.']},
@@ -49,7 +50,12 @@ def answer(payload:ChatRequest,user:Principal,store=gateway,provider=wording_pro
  if (payload.scope=='candidate' and payload.job_id) or (payload.scope=='staff' and payload.application_id):raise HTTPException(422,'Invalid assistant selection')
  decision=RuleDecisionProvider().decide(payload.message,payload.scope)
  external=decision.action=='faq' and get_settings().EXTERNAL_LLM_ENABLED
- event=store.rpc('m6_begin',token=user.token,payload={'p_scope':payload.scope,'p_external':external})
+ requested=get_settings().MORPHEUS_MODEL if get_settings().LLM_PROVIDER=='morpheus' else 'typesafe/jev-router'
+ begin_payload={'p_scope':payload.scope,'p_external':external}
+ begin_rpc='m6_begin'
+ if external and get_settings().LLM_PROVIDER=='morpheus':
+  begin_rpc='m6_begin_provider';begin_payload['p_requested_model']=requested
+ event=store.rpc(begin_rpc,token=user.token,payload=begin_payload)
  ms=payload.locale=='ms';tool='unsupported';warning=None;wording=Wording();citations=[];selection=[];data=None
  try:
   if decision.action=='denied':raise HTTPException(403,'Access denied')
@@ -99,7 +105,7 @@ def answer(payload:ChatRequest,user:Principal,store=gateway,provider=wording_pro
  warning=warning or wording.fallback_warning
  store.rpc('m6_complete',token=user.token,payload={'p_event':event['id'],'p_tool':tool,'p_warning':warning,'p_actual':wording.actual_model,'p_provider':wording.provider})
  return {'answer':text,'data':data,'choices':selection,'citations':citations,'fallback_warning':warning,'read_only':True,
- 'provenance':{'requested_model':'typesafe/jev-router' if external else 'rules','actual_model':wording.actual_model,'provider':wording.provider,'plan':'rules-v1','input_scope':'public_faq_code_only' if external else 'authorized_views_only'}}
+ 'provenance':{'requested_model':requested if external else 'rules','actual_model':wording.actual_model,'provider':wording.provider,'plan':'rules-v1','input_scope':'public_faq_code_only' if external else 'authorized_views_only'}}
 
 @router.get('/options')
 def get_options(scope:Literal['candidate','staff']='candidate',user:Principal=Depends(require_user)):

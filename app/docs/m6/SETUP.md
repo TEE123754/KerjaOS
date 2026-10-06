@@ -29,3 +29,8 @@ Rollback: disable environment EXTERNAL_LLM_ENABLED and DB chat_policy.external_e
 Tests run only after M6 construction: affected foundation pytest, actual PostgreSQL migration/permissions/quota fixtures, frontend build/typecheck, six browser scenarios and one local promptfoo malicious-input evaluation. promptfoo is a pinned development-only tool; its Python provider exercises the actual deterministic handler, never an external model. See [Python provider docs](https://www.promptfoo.dev/docs/providers/python/). Turn telemetry off and select the project .venv interpreter.
 
 Live Auth/PostgREST/RLS/proxy/MFA, multi-connection budget contention, scheduled metadata purge, restore/replay and actual free/privacy-compatible route checks remain pending keys/configuration. Browser API fixtures and serial PGlite do not establish those hosted properties. No deployment or real candidate data is part of this phase.
+
+
+## 5 October 2026 — optional Morpheus adapter
+
+The owner supplied Morpheus credentials and authorized choosing inexpensive inference. The new pinned gpt-oss-120b public-FAQ selector preserves all personal-data/tool boundaries and M6 database quotas. Existing Jev defaults are unchanged in the example env. See [L1 setup](../l1/SETUP.md) for the rate, caps, configuration gate, provider metadata migration and remaining SQL/Auth integration. Morpheus is credit-funded; it is not advertised as free.

@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import {BriefcaseBusiness} from 'lucide-react';
+import {readTheme,persistTheme,type WorkspaceTheme} from './theme';
 import { ApplicationDashboard } from './ApplicationDashboard';
 import { IdentityWorkspace } from './IdentityWorkspace';
 import { QuizWorkspace } from './QuizWorkspace';
@@ -12,6 +14,14 @@ import {TrackerWorkspace} from './TrackerWorkspace';
 import {PrivacyWorkspace} from './PrivacyWorkspace';
 import { DesktopPanel } from './DesktopPanel';
 import { api } from './api';
+import { DemoWorkspace } from './DemoWorkspace';
+import { RecruiterWorkspace } from './RecruiterWorkspace';
+import {ProfileWorkspace} from './ProfileWorkspace';
+import {HRWorkspace} from './HRWorkspace';
+import {WorkspaceModeHeader, type WorkspaceMode} from './WorkspaceModeHeader';
+import {MainOverview,summarizeWorkspace,workspaceAnswer,type RecruitmentSnapshot} from './MainOverview';
+import {FloatingAssistant} from './FloatingAssistant';
+import type {HRContext} from './hrDemo';
 import './foundation.css';
 
 type Me = { id: string; email: string; aal: string; password_recovery: boolean; csrf_token: string; memberships: { role: string; employer_id: string }[] };
@@ -23,15 +33,25 @@ const words = {
 };
 
 export function FoundationWorkspace() {
+  const [demoRole,setDemoRole]=useState<'candidate'|'recruiter'|'employee'|null>(null);
+  const [employeeMode,setEmployeeMode]=useState(false);
+  const [overviewMode,setOverviewMode]=useState(false);
+  const [hrContext,setHrContext]=useState<HRContext|null>(null);
+  const [recruitmentContext,setRecruitmentContext]=useState<RecruitmentSnapshot|null>(null);
+  const [hrRequest,setHrRequest]=useState<{view:string;sequence:number}>();
+  const [applicationsReady,setApplicationsReady]=useState(false),[jobsReady,setJobsReady]=useState(false);
+  const hrIdentity=useRef(''),careerChoice=useRef('');
+  const [loginRole,setLoginRole]=useState<'candidate'|'recruiter'|'employee'|'account'>('candidate');
   const [locale, setLocale] = useState<'en' | 'ms'>('en');
-  const [theme,setTheme]=useState<'classic'|'luna'>(()=>{try{return localStorage.getItem('kerjaos-theme')==='luna'?'luna':'classic';}catch{return 'classic';}});
+  const [theme,setThemeState]=useState<WorkspaceTheme>(readTheme);
+  function setTheme(value:WorkspaceTheme){setThemeState(value);persistTheme(value)}
   const [view,setView]=useState(()=>{const v=new URLSearchParams(window.location.search).get('view');return v&&['Reminders','Interviews'].includes(v)?v:'all';});
   useEffect(()=>{document.documentElement.lang=locale;},[locale]);
   const [me, setMe] = useState<Me | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [applications, setApplications] = useState<Application[]>([]);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('candidate@demo.kerjaos.test');
+  const [password, setPassword] = useState('KerjaDemo2026!');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [factorId, setFactorId] = useState('');
@@ -47,13 +67,16 @@ export function FoundationWorkspace() {
     try {
       const identity = await api<Me>('/me');
       setMe(identity);
-      setApplications(await api<Application[]>('/applications'));
+      if(!me&&identity.aal==='aal2'&&identity.memberships.some(m=>['hm','admin','recruiter'].includes(m.role)))setView('Recruiting');
+      setApplications(await api<Application[]>('/applications'));setApplicationsReady(true);
+      try{const hr=await api<HRContext>('/hr/context');const next=identity.id+':'+hr.mine.map(e=>e.id+':'+e.state).join('|');if(hrIdentity.current!==next){hrIdentity.current=next;setEmployeeMode(careerChoice.current!==identity.id&&hr.mine.some(e=>['invited','active'].includes(e.state)));}}catch{/* HR migration/access pending; recruitment remains available. */}
     } catch (error) {
-      setMe(null); setApplications([]); setLinks({}); setQr(''); setFactorId(''); setCode('');
+      setMe(null); setEmployeeMode(false);setOverviewMode(false);setHrContext(null);setRecruitmentContext(null);setApplicationsReady(false);setJobsReady(false); hrIdentity.current='';careerChoice.current=''; setApplications([]); setLinks({}); setQr(''); setFactorId(''); setCode('');
       if (!String(error).includes('Sign in')) setMessage(String(error));
+      return;
     }
-    try { setJobs(await api<Job[]>('/jobs')); }
-    catch (error) { setJobs([]); setMessage(String(error)); }
+    try { setJobs(await api<Job[]>('/jobs'));setJobsReady(true); }
+    catch (error) { setJobs([]);setJobsReady(false);setMessage(String(error)); }
   }
 
   useEffect(() => {
@@ -80,32 +103,54 @@ export function FoundationWorkspace() {
     finally { setBusy(false); }
   }
 
-  return <main className="foundation" data-theme={theme}>
-    <div className="brand-strip"><img src="/kerjaos-mark.svg" alt=""/><div><h1>KerjaOS</h1><p>{locale==='ms'?'404 → 200: laluan seterusnya, dengan manusia. Nama sementara.':'404 → 200: your next path, with people. Provisional name.'}</p></div><img src="/kerjaos-mascot.svg" alt={locale==='ms'?'Signal, maskot KerjaOS':'Signal, KerjaOS mascot'}/><label>{locale==='ms'?'Tema':'Theme'}<select aria-label="Desktop theme" value={theme} onChange={e=>{const value=e.target.value as 'classic'|'luna';setTheme(value);try{localStorage.setItem('kerjaos-theme',value);}catch{}}}><option value="classic">Classic</option><option value="luna">Luna</option></select></label></div>
+  function changeWorkspace(mode:WorkspaceMode) {
+    if(me)careerChoice.current=mode!=='Management'?me.id:'';
+    setOverviewMode(mode==='Main Overview');
+    setEmployeeMode(mode==='Management');
+  }
+  const recruiter=!!me&&me.aal==='aal2'&&me.memberships.some(m=>['hm','admin','recruiter'].includes(m.role));
+  const overview=summarizeWorkspace(hrContext,recruiter?recruitmentContext:applicationsReady&&jobsReady?{jobs,rows:applications,total:applications.length}:null);
+  function openManagement(next:string){setHrRequest(v=>({view:next,sequence:(v?.sequence||0)+1}));changeWorkspace('Management')}
+  function openRecruitment(){setView(recruiter?'Recruiting':'Applications');changeWorkspace('Recruitment')}
+  if(demoRole) return <DemoWorkspace role={demoRole==='employee'?'candidate':demoRole} employeeDemo={demoRole==='employee'} locale={locale} setLocale={setLocale} theme={theme} setTheme={setTheme} onExit={()=>{setDemoRole(null);setMessage('');}}/>;
+
+  return <main className={"foundation"+(me?" portal-shell":"")} data-theme={theme}>
+    {me&&<WorkspaceModeHeader mode={overviewMode?'Main Overview':employeeMode?'Management':'Recruitment'} onChange={changeWorkspace} locale={locale}/>}
+    {me&&<div hidden={!overviewMode}><MainOverview data={overview} locale={locale} recruiter={recruiter} onManagement={openManagement} onRecruitment={openRecruitment}/></div>}
+    {me&&<div hidden={!employeeMode||overviewMode}>
+      <HRWorkspace embedded onContext={setHrContext} navigationRequest={hrRequest} key={me.id} csrf={me.csrf_token} theme={theme} setTheme={setTheme} locale={locale}
+        onCareer={()=>changeWorkspace('Recruitment')} onExit={()=>void action(async()=>{
+          await api('/auth/logout',{method:'POST'},me.csrf_token);setMe(null);setEmployeeMode(false);setOverviewMode(false);setHrContext(null);setRecruitmentContext(null);setApplicationsReady(false);setJobsReady(false);hrIdentity.current='';careerChoice.current='';setApplications([]);setLinks({});setQr('');setFactorId('');setCode('');
+        })}/>
+      <p role="status" aria-live="polite">{message}</p>
+    </div>}
+    <div className="recruitment-mode-content" hidden={!!me&&(employeeMode||overviewMode)}>
+    <div className="brand-strip"><img src="/kerjaos-mark.svg" alt=""/><div><h1>KerjaOS</h1><p>{locale==='ms'?'Peluang seterusnya bermula di sini.':'Your next opportunity starts here.'}</p></div><img src="/kerjaos-mascot.svg" alt={locale==='ms'?'Signal, maskot KerjaOS':'Signal, KerjaOS mascot'}/><label>{locale==='ms'?'Tema':'Theme'}<select aria-label="Theme" value={theme} onChange={e=>{const value=e.target.value as WorkspaceTheme;setTheme(value)}}><option value="light">Light</option><option value="dark">Dark</option></select></label></div>
+    {me&&<nav className="portal-tabs global-workspace-tabs" aria-label="Workspace navigation">{['all','HR','Recruiting','Profile','Applications','Interview Results','Identity','Quiz','Background','Discover','Assistant','Interviews','Privacy','Tracker','Analytics','Reminders'].map(name=><button key={name} aria-pressed={view===name} onClick={()=>name==='HR'?changeWorkspace('Management'):setView(name)}>{locale==='ms'?({all:'Semua alat',HR:'Pengurusan HR',Recruiting:'Pengambilan',Profile:'Profil','Interview Results':'Hasil temu duga',Applications:'Permohonan',Identity:'Identiti',Quiz:'Kuiz',Background:'Latar belakang',Discover:'Temui',Assistant:'Pembantu',Interviews:'Temu duga',Privacy:'Privasi',Tracker:'Penjejak',Analytics:'Analitik',Reminders:'Peringatan'} as Record<string,string>)[name]:name==='all'?'All tools':name==='HR'?'Company HR':name}</button>)}</nav>}
     <section className="foundation-window" aria-label={t.title}>
       <header><strong>KerjaOS — {t.title}</strong><select aria-label="Language / Bahasa" value={locale} onChange={e => setLocale(e.target.value as 'en' | 'ms')}><option value="en">English</option><option value="ms">Bahasa Malaysia</option></select></header>
-      <div className="foundation-content">
-        <p className="notice">{locale==='ms'?'Demo sintetik sahaja — gunakan data rekaan. Pelepasan awam belum diluluskan.':'Synthetic demo only — use invented data. Public release is not approved.'}</p>
-        <p className="notice">{t.warning}</p>
+      <div className={'foundation-content'+(!me?' welcome-content':'')}>
+        {me&&<p className="notice">{locale==='ms'?'Ruang kerja akaun':'Account workspace'}</p>}
         <p role="status" aria-live="polite">{message}</p>
-        {!me ? <form onSubmit={e => { e.preventDefault(); void action(async () => {
+        {!me ? <><div className="welcome-hero"><div className="welcome-icon"><BriefcaseBusiness size={34} aria-hidden="true"/></div><div><small>A LITTLE CLARITY. A LOT OF POSSIBILITY.</small><h2>{locale==='ms'?'Selamat datang ke KerjaOS':'Good work starts here.'}</h2><p>{locale==='ms'?'Cari peluang. Kenali bakat. Bina masa depan.':'Your next role. Your next great hire. A clearer path to both.'}</p></div><div className="welcome-pills"><span>Track your progress</span><span>Meet your next hire</span></div></div><div className="login-tabs" role="group" aria-label="Sign-in workspace">{(['candidate','recruiter','employee','account'] as const).map(r=><button type="button" key={r} aria-pressed={loginRole===r} onClick={()=>{setLoginRole(r);setEmail(r==='account'?'':r+'@demo.kerjaos.test');setPassword(r==='account'?'':'KerjaDemo2026!');setMessage('');}}>{r==='candidate'?'Candidate demo':r==='recruiter'?'Recruiter demo':r==='employee'?'Employee demo':'My account'}</button>)}</div><form className="login-form" onSubmit={e => { e.preventDefault(); void action(async () => {
+          if(email==='candidate@demo.kerjaos.test'||email==='recruiter@demo.kerjaos.test'||email==='employee@demo.kerjaos.test'){if(password!=='KerjaDemo2026!')throw Error('Use the demo password shown below.');setDemoRole(email.startsWith('recruiter')?'recruiter':email.startsWith('employee')?'employee':'candidate');return;}
           await api('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
           setPassword(''); await reload();
         }); }}>
           <label>{t.email}<input type="email" required autoComplete="username" value={email} onChange={e => setEmail(e.target.value)} /></label>
           <label>{t.password}<input type="password" required minLength={8} autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} /></label>
-          <button disabled={busy}>{t.login}</button> <a href="/api/v1/auth/google">{t.google}</a>
-          <button type="button" disabled={busy || !email} onClick={() => void action(async () => {
+          <button disabled={busy}>{t.login}</button> {loginRole==='account'&&<a href="/api/v1/auth/google">{t.google}</a>}
+          {loginRole==='account'&&<button type="button" disabled={busy || !email} onClick={() => void action(async () => {
             const result = await api<{message: string}>('/auth/recover', {method: 'POST', body: JSON.stringify({email})}); setMessage(result.message);
-          })}>Request password recovery</button>
-          <p>Use a verified Supabase account. Existing accounts require a verified migration; demo credentials are disabled.</p>
-        </form> : <>
+          })}>Request password recovery</button>}
+          {loginRole==='account'&&<button type="button" disabled={busy||!email||password.length<8} onClick={()=>void action(async()=>{const r=await api<{message:string}>('/auth/signup',{method:'POST',body:JSON.stringify({email,password})});setMessage(r.message);setPassword('');})}>Create account</button>}<div className="demo-account"><strong>{loginRole==='account'?'Your private workspace':'Ready-to-use demo account'}</strong><p>{loginRole==='account'?'Sign in with your verified email.':'Password: KerjaDemo2026! · Sample data · No setup needed'}</p></div>
+        </form><div className="welcome-footer"><span>✓ Multi-job tracking</span><span>✓ Guided screening</span><span>✓ Human decisions</span></div></> : <>
           <p>{me.email} <button disabled={busy} onClick={() => void action(async () => {
-            await api('/auth/logout', { method: 'POST' }, me.csrf_token); setMe(null); setApplications([]); setLinks({}); setQr(''); setFactorId(''); setCode('');
+            await api('/auth/logout', { method: 'POST' }, me.csrf_token); setMe(null); setEmployeeMode(false);setOverviewMode(false);setHrContext(null);setRecruitmentContext(null);setApplicationsReady(false);setJobsReady(false); hrIdentity.current='';careerChoice.current=''; setApplications([]); setLinks({}); setQr(''); setFactorId(''); setCode('');
           })}>{t.logout}</button> <button disabled={busy} onClick={() => void action(reload)}>{t.refresh}</button></p>
           {me.password_recovery && <form onSubmit={e => {e.preventDefault(); void action(async () => {
             await api('/auth/recovery-password', {method: 'POST', body: JSON.stringify({new_password: newPassword})}, me.csrf_token);
-            setNewPassword(''); setMe(null); setApplications([]); setLinks({}); setQr(''); setMessage('Password updated. Sign in again.');
+            setNewPassword(''); setMe(null); setEmployeeMode(false);setOverviewMode(false);setHrContext(null);setRecruitmentContext(null);setApplicationsReady(false);setJobsReady(false); hrIdentity.current='';careerChoice.current=''; setApplications([]); setLinks({}); setQr(''); setMessage('Password updated. Sign in again.');
           });}}><label>New password<input type="password" minLength={12} required autoComplete="new-password" value={newPassword} onChange={e => setNewPassword(e.target.value)} /></label><button disabled={busy}>Set password after verified recovery</button></form>}
           {me.memberships.length > 0 && <fieldset><legend>Staff MFA ({me.aal})</legend>
             <p>Verify your existing authenticator factor, or enroll one for this account.</p>
@@ -121,6 +166,8 @@ export function FoundationWorkspace() {
               setCode(''); setQr(''); await reload();
             })}>Verify MFA</button>
           </fieldset>}
+          {me.aal==='aal2'&&me.memberships.some(m=>['hm','admin','recruiter'].includes(m.role))&&<DesktopPanel name="Recruiting" locale={locale} hidden={view!=='all'&&view!=='Recruiting'}><RecruiterWorkspace locale={locale} csrf={me.csrf_token} memberships={me.memberships} onSnapshot={setRecruitmentContext}/></DesktopPanel>}
+          <DesktopPanel name="Profile" locale={locale} hidden={view!=='all'&&view!=='Profile'}><ProfileWorkspace csrf={me.csrf_token} locale={locale}/></DesktopPanel>
           <h2>{t.jobs}</h2>
           {jobs.length === 0 && <p>No published roles available. The operator must configure jobs; no fake listings are shown.</p>}
           <ul>{jobs.map(job => <li key={job.id}>{job.title} — {job.department} <button disabled={busy || applications.some(a => a.job_id === job.id)} onClick={() => void action(async () => {
@@ -133,6 +180,7 @@ export function FoundationWorkspace() {
             reviewer={me.aal==='aal2' && me.memberships.some(m=>['hm','admin','reviewer'].includes(m.role))} reload={reload} /></DesktopPanel>
           <DesktopPanel locale={locale} name="Quiz" hidden={view!=='all' && view!=='Quiz'}><QuizWorkspace key={'quiz-'+me.id} applications={applications} jobs={jobs} locale={locale} csrf={me.csrf_token}
             staff={me.aal==='aal2' && me.memberships.some(m=>['hm','admin'].includes(m.role))} /></DesktopPanel>
+          <DesktopPanel locale={locale} name="Interview Results" hidden={view!=="Interview Results"}><QuizWorkspace key={"feedback-"+me.id} applications={applications} jobs={jobs} locale={locale} csrf={me.csrf_token} staff={false}/></DesktopPanel>
           <DesktopPanel locale={locale} name="Background" hidden={view!=='all' && view!=='Background'}><BackgroundWorkspace key={'background-'+me.id} applications={applications} jobs={jobs} locale={locale} csrf={me.csrf_token} reload={reload}
             staff={me.aal==='aal2' && me.memberships.some(m=>['hm','admin'].includes(m.role))} admin={me.aal==='aal2' && me.memberships.some(m=>m.role==='admin')} /></DesktopPanel>
           <DesktopPanel locale={locale} name="Discover" hidden={view!=='all' && view!=='Discover'}><DiscoverWorkspace key={'discover-'+me.id} locale={locale} csrf={me.csrf_token}/></DesktopPanel>
@@ -164,7 +212,8 @@ export function FoundationWorkspace() {
         </>}
       </div>
     </section>
-    {me&&<nav className="taskbar" aria-label="Workspace taskbar">{['all','Applications','Identity','Quiz','Background','Discover','Assistant','Interviews','Privacy','Tracker','Analytics','Reminders'].map(name=><button key={name} aria-pressed={view===name} onClick={()=>setView(name)}>{locale==='ms'?({all:'Semua tetingkap',Applications:'Permohonan',Identity:'Identiti',Quiz:'Kuiz',Background:'Latar belakang',Discover:'Temui',Assistant:'Pembantu',Interviews:'Temu duga',Privacy:'Privasi',Tracker:'Penjejak',Analytics:'Analitik',Reminders:'Peringatan'} as Record<string,string>)[name]:name==='all'?'All windows':name}</button>)}</nav>}
+    </div>
+    {me&&<FloatingAssistant key={me.id} locale={locale}><ChatWorkspace locale={locale} csrf={me.csrf_token} staff={recruiter} localReply={q=>workspaceAnswer(q,locale,overview)}/></FloatingAssistant>}
   </main>;
 
   function documentLinks(id: string, url: string) { return {[id]: url}; }

@@ -2690,9 +2690,12 @@ def auto_source_candidates(payload: AutoSourcePayload):
                     search_input = {
                         "query": boolean_query,
                         "queries": [boolean_query],
+                        "keywords": boolean_query,
                         "limit": payload.count,
                         "maxItems": payload.count,
+                        "maxResults": payload.count,
                         "count": payload.count,
+                        "enrichProfiles": False,
                     }
                     if settings.LINKEDIN_LI_AT_COOKIE.strip():
                         search_input["cookies"] = [{"name": "li_at", "value": settings.LINKEDIN_LI_AT_COOKIE.strip()}]
@@ -2715,6 +2718,8 @@ def auto_source_candidates(payload: AutoSourcePayload):
                     search_items = list(client.dataset(dataset_id).iterate_items())
                     profile_urls = []
                     for item in search_items:
+                        if item.get("errorType"):
+                            continue
                         url = item.get("url") or item.get("profileUrl") or item.get("link") or item.get("profileUrlLink") or item.get("profile_url")
                         if url:
                             profile_urls.append(url)

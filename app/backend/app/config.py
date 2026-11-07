@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     LINKEDIN_HEADLESS: bool = True
     APIFY_API_TOKEN: str = ""
     APIFY_PROFILE_ACTOR_ID: str = "LpVuK3Zozwuipa5bp"
-    APIFY_SEARCH_ACTOR_ID: str = "curious_coder/linkedin-people-search-scraper"
+    APIFY_SEARCH_ACTOR_ID: str = "johnvc/linkedin-people-search-api"
     APIFY_TIMEOUT_SECONDS: int = 90
     RANKING_API_URL: str = ""
     RANKING_API_KEY: str = ""
